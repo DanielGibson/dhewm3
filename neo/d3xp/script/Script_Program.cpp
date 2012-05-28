@@ -652,7 +652,11 @@ idVarDef::SetObject
 */
 void idVarDef::SetObject( idScriptObject *object ) {
 	assert( typeDef );
-	initialized = initialized;
+	// initialized = initialized;
+	// FIXME: that line makes no sense and I'm unsure if it should be replaced
+	// with "initialized = inizializedVariable;" or something like that.
+	// But value.objectPtrPtr is not really used and neither is this function,
+	// it's only called from idCompiler::ParseVariableDef() with NULL argument
 	assert( typeDef->Inherits( &type_object ) );
 	*value.objectPtrPtr = object;
 }
