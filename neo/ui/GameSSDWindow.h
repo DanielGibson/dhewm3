@@ -45,8 +45,8 @@ public:
 	float				crosshairWidth, crosshairHeight;
 
 public:
-				SSDCrossHair();
-				~SSDCrossHair();
+				SSDCrossHair() {}
+	virtual			~SSDCrossHair() {}
 
 	virtual void	WriteToSaveGame( idFile *savefile );
 	virtual void	ReadFromSaveGame( idFile *savefile );

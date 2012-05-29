@@ -51,12 +51,6 @@ If you have questions concerning this license or the applicable additional terms
 #define CROSSHAIR_STANDARD_MATERIAL "game/SSD/crosshair_standard"
 #define CROSSHAIR_SUPER_MATERIAL "game/SSD/crosshair_super"
 
-SSDCrossHair::SSDCrossHair() {
-}
-
-SSDCrossHair::~SSDCrossHair() {
-}
-
 void SSDCrossHair::WriteToSaveGame( idFile *savefile ) {
 
 	savefile->Write(&currentCrosshair, sizeof(currentCrosshair));
