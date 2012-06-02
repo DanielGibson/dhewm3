@@ -216,6 +216,7 @@ Encapsulates functionality of a DirectSound buffer.
 
 class idAudioBuffer {
 public:
+	virtual			~idAudioBuffer() {}
 	virtual int		Play( dword dwPriority=0, dword dwFlags=0 ) = 0;
 	virtual int			Stop( void ) = 0;
 	virtual int			Reset( void ) = 0;

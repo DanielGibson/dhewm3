@@ -4883,7 +4883,7 @@ float idMatX::Pythag( float a, float b ) const {
 		ct = bt / at;
 		return at * idMath::Sqrt( 1.0f + ct * ct );
 	} else {
-		if ( bt ) {
+		if ( bt > 0.0 ) {
 			ct = at / bt;
 			return bt * idMath::Sqrt( 1.0f + ct * ct );
 		} else {
@@ -5094,7 +5094,6 @@ bool idMatX::SVD_Factor( idVecX &w, idMatX &V ) {
 				}
 			}
 			if ( flag ) {
-				c = 0.0f;
 				s = 1.0f;
 				for ( i = l; i <= k; i++ ) {
 					f = s * rv1[i];

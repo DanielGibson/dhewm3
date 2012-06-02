@@ -119,7 +119,8 @@ endif()
 # compiler specific flags
 if (CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID STREQUAL "Clang")
 	add_definitions(-pipe)
-	add_definitions(-Wall)
+	add_definitions(-Wall -Wnon-virtual-dtor) 
+	#-Wunused-variable -Wnon-virtual-dtor -Winit-self -Wuninitialized) 
 
 	if (NOT CMAKE_CROSSCOMPILING AND ONATIVE)
 		add_definitions(-march=native)

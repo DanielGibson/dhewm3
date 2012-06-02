@@ -1317,7 +1317,7 @@ idFile_InZip::Timestamp
 ================
 */
 ID_TIME_T idFile_InZip::Timestamp( void ) {
-	return 0;
+	return 0; // TODO: zips save timestamps, use them?
 }
 
 /*

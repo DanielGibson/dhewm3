@@ -1171,6 +1171,10 @@ int idTraceModel::GetOrderedSilhouetteEdges( const int edgeIsSilEdge[MAX_TRACEMO
 		}
 	}
 
+	if( numSilEdges == 0 ) {
+		return 0;
+	}
+
 	silEdges[0] = unsortedSilEdges[0];
 	unsortedSilEdges[0] = -1;
 	nextSilVert = edges[silEdges[0]].v[0];
