@@ -69,6 +69,13 @@ public:
 	void		Union( const idScreenRect &rect );
 	bool		Equals( const idScreenRect &rect ) const;
 	bool		IsEmpty() const;
+
+	// from Doom3BFG
+	int			GetArea() const {
+		int a = x2 - x1 + 1;
+		int b = y2 - y1 + 1;
+		return a*b;
+	}
 };
 
 idScreenRect R_ScreenRectFromViewFrustumBounds( const idBounds &bounds );
