@@ -175,7 +175,10 @@ to actually render the visible surfaces for this view
 */
 void RB_BeginDrawingView (void) {
 
-  // set the window clipping
+	// TODO: use this instead so we can easily switch to another for testing?
+	// const viewDef_t* viewDef = backEnd.viewDef;
+
+	// set the window clipping
 	qglViewport( tr.viewportOffset[0] + backEnd.viewDef->viewport.x1,
 		tr.viewportOffset[1] + backEnd.viewDef->viewport.y1,
 		backEnd.viewDef->viewport.x2 + 1 - backEnd.viewDef->viewport.x1,
@@ -205,7 +208,8 @@ void RB_BeginDrawingView (void) {
 	}
 
 	backEnd.glState.faceCulling = -1;		// force face culling to set next time
-  GL_Cull( CT_FRONT_SIDED );
+	
+	GL_Cull( CT_FRONT_SIDED );
 }
 
 /*
@@ -303,6 +307,33 @@ void RB_DrawView( const void *data ) {
 	const drawSurfsCommand_t	*cmd;
 
 	cmd = (const drawSurfsCommand_t *)data;
+
+	if(r_lockSurfaces.GetBool()) {
+		//viewDef = &tr.lockSurfacesRealViewDef;
+		//const viewDef_t origParms = *backEnd.viewDef;
+		viewDef_t* parms = cmd->viewDef;
+		const viewDef_t origParms = *parms;
+
+		*parms = tr.lockSurfacesRealViewDef; // actual current player/camera position
+		parms->renderWorld = origParms.renderWorld;
+		parms->floatTime = origParms.floatTime;
+		parms->drawSurfs = origParms.drawSurfs;
+		parms->numDrawSurfs = origParms.numDrawSurfs;
+		parms->maxDrawSurfs = origParms.maxDrawSurfs;
+		parms->viewLights = origParms.viewLights;
+		parms->viewEntitys = origParms.viewEntitys;
+		parms->connectedAreas = origParms.connectedAreas;
+
+		// implicit parms->worldSpace = origParms.worldSpace;
+
+		// update the view origin and axis, and all the entity matricies
+		for( viewEntity_t* vModel = tr.lockSurfacesCmd.viewDef->viewEntitys ; vModel ; vModel = vModel->next ) {
+			myGlMultMatrix( vModel->modelMatrix,
+				parms->worldSpace.modelViewMatrix,
+				vModel->modelViewMatrix );
+		}
+
+	}
 
 	backEnd.viewDef = cmd->viewDef;
 

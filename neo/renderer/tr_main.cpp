@@ -177,7 +177,7 @@ R_ToggleSmpFrame
 */
 void R_ToggleSmpFrame( void ) {
 	if ( r_lockSurfaces.GetBool() ) {
-		return;
+		//return;
 	}
 	R_FreeDeferredTriSurfs( frameData );
 
@@ -959,7 +959,8 @@ Setup that culling frustum planes for the current view
 FIXME: derive from modelview matrix times projection matrix
 =================
 */
-static void R_SetupViewFrustum( void ) {
+//static
+void R_SetupViewFrustum( void ) {
 	int		i;
 	float	xs, xc;
 	float	ang;
@@ -1086,7 +1087,7 @@ a mirror / remote location, or a 3D view on a gui surface.
 Parms will typically be allocated with R_FrameAlloc
 ================
 */
-void R_RenderView( viewDef_t *parms ) {
+void R_RenderView( viewDef_t *parms, bool isMain ) {
 	viewDef_t		*oldView;
 
 	if ( parms->renderView.width <= 0 || parms->renderView.height <= 0 ) {
@@ -1150,7 +1151,8 @@ void R_RenderView( viewDef_t *parms ) {
 	}
 
 	// add the rendering commands for this viewDef
-	R_AddDrawViewCmd( parms );
+	//if(!r_lockSurfaces.GetBool() || !isMain)
+		R_AddDrawViewCmd( parms, isMain );
 
 	// restore view in case we are a subview
 	tr.viewDef = oldView;
