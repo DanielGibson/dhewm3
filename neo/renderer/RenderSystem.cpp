@@ -260,7 +260,7 @@ evaluated interactively.
 */
 
 void R_SetupViewFrustum( void );
-void R_SetupProjection( void );
+void R_SetupProjection( viewDef_t * viewDef );
 
 void R_LockSurfaceScene( viewDef_t *parms ) {
 	drawSurfsCommand_t	*cmd;
@@ -278,7 +278,7 @@ void R_LockSurfaceScene( viewDef_t *parms ) {
 
 	// we need to set the projection matrix before doing
 	// portal-to-screen scissor box calculations
-	R_SetupProjection();
+	R_SetupProjection(tr.viewDef);
 
 	tr.lockSurfacesCmd.viewDef->worldSpace = parms->worldSpace;
 

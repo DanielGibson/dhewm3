@@ -303,6 +303,7 @@ void RB_SubmittInteraction( drawInteraction_t *din, void (*DrawInteraction)(cons
 RB_DrawView
 =============
 */
+extern void R_SetupProjection( viewDef_t * viewDef );
 void RB_DrawView( const void *data ) {
 	const drawSurfsCommand_t	*cmd;
 
@@ -314,7 +315,7 @@ void RB_DrawView( const void *data ) {
 		viewDef_t* parms = cmd->viewDef;
 		const viewDef_t origParms = *parms;
 
-		*parms = tr.lockSurfacesRealViewDef; // actual current player/camera position
+		*parms = tr.lockSurfacesRealViewDef; // actual current player/camera position - XXX: really? what about projection matrix?
 		parms->renderWorld = origParms.renderWorld;
 		parms->floatTime = origParms.floatTime;
 		parms->drawSurfs = origParms.drawSurfs;
@@ -323,6 +324,13 @@ void RB_DrawView( const void *data ) {
 		parms->viewLights = origParms.viewLights;
 		parms->viewEntitys = origParms.viewEntitys;
 		parms->connectedAreas = origParms.connectedAreas;
+
+		// TODO: is this really the proper one? maybe should've been set before when origParms.projectionMatrix was set?
+		//memcpy(parms->projectionMatrix, origParms.projectionMatrix, sizeof(origParms.projectionMatrix));
+		//memcpy(parms->worldSpace.modelViewMatrix, origParms.worldSpace.modelViewMatrix, sizeof(origParms.worldSpace.modelViewMatrix));
+		R_SetupProjection(parms);
+		// TODO: R_SetupViewFrustum() ?
+		R_SetViewMatrix(parms);
 
 		// implicit parms->worldSpace = origParms.worldSpace;
 
