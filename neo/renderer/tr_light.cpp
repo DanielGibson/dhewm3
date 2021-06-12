@@ -272,6 +272,7 @@ viewEntity_t* R_SetEntityDefViewEntity(idRenderEntityLocal* def) {
   vModel->modelDepthHack = def->parms.modelDepthHack;
   vModel->weaponDepthHack = def->parms.weaponDepthHack;
 
+  vModel->modelMatrix[0] = 0;
   R_AxisToModelMatrix(def->parms.axis, def->parms.origin, vModel->modelMatrix);
 
   // we may not have a viewDef if we are just creating shadows at entity creation time
