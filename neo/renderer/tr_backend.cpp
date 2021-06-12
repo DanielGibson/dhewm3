@@ -300,8 +300,6 @@ static void	RB_SetBuffer( const void *data ) {
 	// Disabled for OES2
 	//qglDrawBuffer( cmd->buffer );
 
-	//return; // XXX
-
 	// clear screen for debugging
 	// automatically enable this with several other debug tools
 	// that might leave unrendered portions of the screen
