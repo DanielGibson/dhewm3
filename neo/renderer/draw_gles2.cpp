@@ -2138,9 +2138,21 @@ int RB_GLSL_DrawShaderPasses(drawSurf_t** drawSurfs, int numDrawSurfs) {
       break;
     }
 
+    {
+      // early out for cases that otherwise cause early return in RB_GLSL_T_RenderShaderPasses()
+      // => no point in computing MVP or setting depthrange for them
+      const idMaterial* const shader = drawSurfs[i]->material;
+      const srfTriangles_t* const tri = drawSurfs[i]->geo;
+
+      if ( !shader->HasAmbient() || shader->IsPortalSky()
+          || !tri->numIndexes || !tri->ambientCache ) {
+        continue;
+      }
+    }
 
     // Change the MVP matrix if needed
-    if ( drawSurfs[i]->space != backEnd.currentSpace ) {
+    if ( drawSurfs[i]->space != backEnd.currentSpace )
+    {
       RB_ComputeMVP(drawSurfs[i], mvp);
       // We can't set the uniform now, as we still don't know which shader to use
     }
