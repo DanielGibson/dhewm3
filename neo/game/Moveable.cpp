@@ -806,6 +806,10 @@ void idExplodingBarrel::Restore( idRestoreGame *savefile ) {
 
 	savefile->ReadRenderEntity( particleRenderEntity );
 	savefile->ReadRenderLight( light );
+	// DG: enforce getting fresh handle, else this may be tied to an unrelated light!
+	if ( lightDefHandle != -1 ) {
+		lightDefHandle = gameRenderWorld->AddLightDef( &light );
+	}
 
 	savefile->ReadInt( particleTime );
 	savefile->ReadInt( lightTime );
