@@ -737,7 +737,7 @@ void idEntity::Restore( idRestoreGame *savefile ) {
 	LittleBitField( &fl, sizeof( fl ) );
 
 	savefile->ReadRenderEntity( renderEntity );
-	savefile->ReadInt( modelDefHandle );
+	savefile->ReadInt( modelDefHandle ); // FIXME: ???
 	savefile->ReadRefSound( refSound );
 
 	savefile->ReadObject( reinterpret_cast<idClass *&>( bindMaster ) );

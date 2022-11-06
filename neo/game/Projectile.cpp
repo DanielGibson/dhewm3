@@ -1762,7 +1762,7 @@ void idBFGProjectile::Restore( idRestoreGame *savefile ) {
 	for ( i = 0; i < num; i++ ) {
 		beamTargets[i].target.Restore( savefile );
 		savefile->ReadRenderEntity( beamTargets[i].renderEntity );
-		savefile->ReadInt( beamTargets[i].modelDefHandle );
+		savefile->ReadInt( beamTargets[i].modelDefHandle ); // FIXME: ???
 
 		if ( beamTargets[i].modelDefHandle >= 0 ) {
 			beamTargets[i].modelDefHandle = gameRenderWorld->AddEntityDef( &beamTargets[i].renderEntity );
@@ -1770,7 +1770,7 @@ void idBFGProjectile::Restore( idRestoreGame *savefile ) {
 	}
 
 	savefile->ReadRenderEntity( secondModel );
-	savefile->ReadInt( secondModelDefHandle );
+	savefile->ReadInt( secondModelDefHandle ); // FIXME: ???
 	savefile->ReadInt( nextDamageTime );
 	savefile->ReadString( damageFreq );
 

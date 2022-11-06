@@ -801,7 +801,7 @@ void idExplodingBarrel::Restore( idRestoreGame *savefile ) {
 	savefile->ReadMat3( spawnAxis );
 
 	savefile->ReadInt( (int &)state );
-	savefile->ReadInt( (int &)particleModelDefHandle );
+	savefile->ReadInt( (int &)particleModelDefHandle ); // FIXME: what about this handle?
 	savefile->ReadInt( (int &)lightDefHandle );
 
 	savefile->ReadRenderEntity( particleRenderEntity );
