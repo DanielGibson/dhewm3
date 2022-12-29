@@ -138,7 +138,7 @@ public:
 
 	virtual void				Init( int argc, char **argv );
 	virtual void				Shutdown( void );
-	virtual void				Quit( void );
+	ID_NORETURN virtual void	Quit( void );
 	virtual bool				IsInitialized( void ) const;
 	virtual void				Frame( void );
 	virtual void				GUIFrame( bool execCmd, bool network );
@@ -158,8 +158,8 @@ public:
 	virtual void				DWarning( const char *fmt, ...) id_attribute((format(printf,2,3)));
 	virtual void				PrintWarnings( void );
 	virtual void				ClearWarnings( const char *reason );
-	virtual void				Error( const char *fmt, ... ) id_attribute((format(printf,2,3)));
-	virtual void				FatalError( const char *fmt, ... ) id_attribute((format(printf,2,3)));
+	ID_NORETURN virtual void	Error( const char *fmt, ... ) id_attribute((format(printf,2,3)));
+	ID_NORETURN virtual void	FatalError( const char *fmt, ... ) id_attribute((format(printf,2,3)));
 	virtual const idLangDict *	GetLanguageDict( void );
 
 	virtual const char *		KeysFromBinding( const char *bind );

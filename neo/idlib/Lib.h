@@ -63,7 +63,7 @@ public:
 	static void					ShutDown( void );
 
 	// wrapper to idCommon functions
-	static void					Error( const char *fmt, ... );
+	ID_NORETURN static void		Error( const char *fmt, ... );
 	static void					Warning( const char *fmt, ... );
 };
 

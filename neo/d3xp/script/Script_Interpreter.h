@@ -100,7 +100,7 @@ public:
 	int					CurrentLine( void ) const;
 	const char			*CurrentFile( void ) const;
 
-	void				Error( const char *fmt, ... ) const id_attribute((format(printf,2,3)));
+	ID_NORETURN void	Error( const char *fmt, ... ) const id_attribute((format(printf,2,3)));
 	void				Warning( const char *fmt, ... ) const id_attribute((format(printf,2,3)));
 	void				DisplayInfo( void ) const;
 

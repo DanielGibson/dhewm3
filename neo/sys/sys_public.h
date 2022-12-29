@@ -97,8 +97,8 @@ template<class type> class idList;		// for Sys_ListFiles
 
 void			Sys_Init( void );
 void			Sys_Shutdown( void );
-void			Sys_Error( const char *error, ...);
-void			Sys_Quit( void );
+ID_NORETURN void Sys_Error( const char *error, ...);
+ID_NORETURN void Sys_Quit( void );
 
 // note that this isn't journaled...
 char *			Sys_GetClipboardData( void );

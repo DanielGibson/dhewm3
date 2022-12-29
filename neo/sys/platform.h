@@ -204,6 +204,16 @@ If you have questions concerning this license or the applicable additional terms
 #define id_attribute(x)
 #endif
 
+#if __cplusplus >= 201103L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201103L)
+  #define ID_NORETURN [[ noreturn ]]
+#else // C++ versions before C++11 didn't support the [[ noreturn ]] attribute
+  #ifdef __GNUC__
+    #define ID_NORETURN __attribute__((noreturn))
+  #else
+    #define ID_NORETURN
+  #endif
+#endif
+
 #if !defined(_MSC_VER)
 	// MSVC does not provide this C99 header
 	#include <inttypes.h>

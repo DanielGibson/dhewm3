@@ -344,7 +344,7 @@ public:
 	void					DPrintf( const char *fmt, ... ) const id_attribute((format(printf,2,3)));
 	void					Warning( const char *fmt, ... ) const id_attribute((format(printf,2,3)));
 	void					DWarning( const char *fmt, ... ) const id_attribute((format(printf,2,3)));
-	void					Error( const char *fmt, ... ) const id_attribute((format(printf,2,3)));
+	ID_NORETURN void		Error( const char *fmt, ... ) const id_attribute((format(printf,2,3)));
 
 							// Initializes all map variables common to both save games and spawned games
 	void					LoadMap( const char *mapName, int randseed );
