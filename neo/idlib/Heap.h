@@ -142,6 +142,25 @@ __inline void operator delete[]( void *p ) {
 #endif /* ID_DEBUG_MEMORY */
 
 
+// allocate SIZE bytes, aligned to 16 bytes - possibly on the stack (like _alloca16())
+// if it's too big (>600KB), it gets allocated on the Heap instead.
+// ON_STACK should be a bool and will be set to true if it was allocated on the stack
+// and false if it was allocated on the heap.
+// if ON_STACK is false, you must free this with Mem_FreeA()!
+// (you can just pass your ON_STACK bool to Mem_FreeA() and it will do the right thing)
+#define Mem_MallocA( SIZE, ON_STACK ) \
+	( (SIZE) < ID_MAX_ALLOCA_SIZE ? ( ON_STACK=true, _alloca16(SIZE) ) : ( ON_STACK=false, Mem_Alloc16(SIZE) ) )
+
+// free memory allocated with Mem_Malloca()
+// unless you checked onStack yourself, you must pass that argument!
+ID_MAYBE_INLINE void Mem_FreeA( void* ptr, bool onStack )
+{
+	if( !onStack ) {
+		Mem_Free16( ptr );
+	}
+}
+
+
 /*
 ===============================================================================
 
