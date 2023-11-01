@@ -32,6 +32,9 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/Model_local.h"
 
+#include "idlib/ScopedAllocator.hpp"
+using dg::ScopedAllocator;
+
 static const char *MD5_SnapshotName = "_MD5_Snapshot_";
 
 /***********************************************************************
@@ -235,7 +238,8 @@ void idMD5Mesh::ParseMesh( idLexer &parser, int numJoints, const idJointMat *joi
 	// build the information that will be common to all animations of this mesh:
 	// silhouette edge connectivity and normal / tangent generation information
 	//
-	idDrawVert *verts = (idDrawVert *) _alloca16( texCoords.Num() * sizeof( idDrawVert ) );
+	ScopedAllocator sa;
+	idDrawVert *verts = sa.AllocPODs<idDrawVert>(texCoords.Num());
 	for ( i = 0; i < texCoords.Num(); i++ ) {
 		verts[i].Clear();
 		verts[i].st = texCoords[i];
@@ -352,7 +356,8 @@ idMD5Mesh::CalcBounds
 */
 idBounds idMD5Mesh::CalcBounds( const idJointMat *entJoints ) {
 	idBounds	bounds;
-	idDrawVert *verts = (idDrawVert *) _alloca16( texCoords.Num() * sizeof( idDrawVert ) );
+	ScopedAllocator sa;
+	idDrawVert *verts = sa.AllocPODs<idDrawVert>(texCoords.Num());
 
 	TransformVerts( verts, entJoints );
 

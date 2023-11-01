@@ -35,6 +35,9 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 
+#include "idlib/ScopedAllocator.hpp"
+using dg::ScopedAllocator;
+
 static const float CHECK_BOUNDS_EPSILON = 1.0f;
 
 /*
@@ -161,7 +164,8 @@ void R_CreateVertexProgramShadowCache( srfTriangles_t *tri ) {
 		return;
 	}
 
-	shadowCache_t *temp = (shadowCache_t *)_alloca16( tri->numVerts * 2 * sizeof( shadowCache_t ) );
+	ScopedAllocator sa;
+	shadowCache_t *temp = sa.AllocPODs<shadowCache_t>(tri->numVerts * 2);
 
 #if 1
 

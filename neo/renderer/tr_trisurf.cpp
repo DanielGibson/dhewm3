@@ -31,6 +31,9 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/tr_local.h"
 
+#include "idlib/ScopedAllocator.hpp"
+using dg::ScopedAllocator;
+
 /*
 ==============================================================================
 
@@ -790,7 +793,8 @@ R_CreateDupVerts
 void R_CreateDupVerts( srfTriangles_t *tri ) {
 	int i;
 
-	int *remap = (int *) _alloca16( tri->numVerts * sizeof( remap[0] ) );
+	ScopedAllocator sa;
+	int *remap = sa.AllocPODs<int>( tri->numVerts );
 
 	// initialize vertex remap in case there are unused verts
 	for ( i = 0; i < tri->numVerts; i++ ) {
@@ -803,7 +807,7 @@ void R_CreateDupVerts( srfTriangles_t *tri ) {
 	}
 
 	// create duplicate vertex index based on the vertex remap
-	int * tempDupVerts = (int *) _alloca16( tri->numVerts * 2 * sizeof( tempDupVerts[0] ) );
+	int * tempDupVerts = sa.AllocPODs<int>( tri->numVerts * 2 );
 	tri->numDupVerts = 0;
 	for ( i = 0; i < tri->numVerts; i++ ) {
 		if ( remap[i] != i ) {
@@ -1279,8 +1283,8 @@ static void	R_DuplicateMirroredVertexes( srfTriangles_t *tri ) {
 	int				totalVerts;
 	int				numMirror;
 
-	tverts = (tangentVert_t *)_alloca16( tri->numVerts * sizeof( *tverts ) );
-	memset( tverts, 0, tri->numVerts * sizeof( *tverts ) );
+	ScopedAllocator sa;
+	tverts = sa.AllocPODsZeroed<tangentVert_t>( tri->numVerts );
 
 	// determine texture polarity of each surface
 
@@ -1386,14 +1390,8 @@ void R_DeriveTangentsWithoutNormals( srfTriangles_t *tri ) {
 	faceTangents_t	*ft;
 	idDrawVert		*vert;
 
-	// DG: windows only has a 1MB stack and it could happen that we try to allocate >1MB here
-	//     (in lost mission mod, game/le_hell map), causing a stack overflow
-	//     to prevent that, use heap allocation if it's >600KB
-	size_t allocaSize = sizeof(faceTangents[0]) * tri->numIndexes/3;
-	if(allocaSize < 600000)
-		faceTangents = (faceTangents_t *)_alloca16( allocaSize );
-	else
-		faceTangents = (faceTangents_t *)Mem_Alloc16( allocaSize );
+	ScopedAllocator sa;
+	faceTangents = sa.AllocPODs<faceTangents_t>( tri->numIndexes/3 );
 
 	R_DeriveFaceTangents( tri, faceTangents );
 
@@ -1450,9 +1448,6 @@ void R_DeriveTangentsWithoutNormals( srfTriangles_t *tri ) {
 	}
 
 	tri->tangentsCalculated = true;
-
-	if(allocaSize >= 600000)
-		Mem_Free16( faceTangents );
 }
 
 static ID_INLINE void VectorNormalizeFast2( const idVec3 &v, idVec3 &out) {

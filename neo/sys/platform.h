@@ -40,7 +40,9 @@ If you have questions concerning this license or the applicable additional terms
 // dhewm3 now uses a 8MB stack, set with a linker flag in CMakeLists.txt (/STACK:8388608 for MSVC, -Wl,--stack,8388608 for mingw)
 // Linux has a 8MB stack by default, and so does macOS, at least for the main thread
 // anyway, a 2MB limit alloca should be safe even when using it multiple times in the same function
-#define ID_MAX_ALLOCA_SIZE 2097152 // 2MB
+//#define ID_MAX_ALLOCA_SIZE 2097152 // 2MB
+// DG: going back to 600KB, where bigger values can realistically happen, ScopedAllocator should be used
+#define ID_MAX_ALLOCA_SIZE 610000 // 600KB
 
 /*
 ===============================================================================

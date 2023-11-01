@@ -46,6 +46,12 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "idlib/Lib.h"
 
+// DG: the scoped allocator implementation must live somewhere, so include it here..
+//     (so in all other places we just need #include "idlib/ScopedAllocator.hpp"
+//      without any #define before it)
+#define DG_SCOPEDALLOCATOR_IMPL
+#include "idlib/ScopedAllocator.hpp"
+
 /*
 ===============================================================================
 
@@ -78,6 +84,12 @@ void idLib::Init( void ) {
 
 	// init string memory allocator
 	idStr::InitMemory();
+
+	// create the ScopedAllocator's PerThreadAllocator incl. its memblock
+	// for this thread, by allocating a byte (not strictly necessary, but
+	// avoids heap allocations when the first ScopedAllocator is properly used)
+	dg::ScopedAllocator sa;
+	sa.AllocRaw(1);
 
 	// initialize generic SIMD implementation
 	idSIMD::Init();
