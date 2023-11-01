@@ -23,6 +23,8 @@ Note: Numbers starting with a "#" like #330 refer to the bugreport with that num
   (0 = TGA, still the default, 1 = BMP, 2 = PNG, 3 = JPG). `r_screenshotJpgQuality` and
   `r_screenshotPngCompression` allow configuring how JPG/PNG are compressed.
   Thanks *eezstreet (Nick Whitlock)*!
+* Fix crashes with big models by using a ScopedAllocator instead of alloca(),
+  which could overflow the stack (#528)
 
 1.5.2 (2022-06-13)
 ------------------------------------------------------------------------

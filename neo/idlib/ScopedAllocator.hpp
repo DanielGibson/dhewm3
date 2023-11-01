@@ -211,8 +211,8 @@ inline void operator delete(void*, dg::scal_impl::ScAlNewDummy, void* ) {} // on
 #if defined(__clang__)
   // clang prefers __is_trivially_destructible (__has_trivial_destructor is deprecated there)
   #define _DG_SCAL_HAS_TRIVIAL_DESTRUCTOR(T_) __is_trivially_destructible(T_)
-#elif defined(__GNUC__) || defined(_MSC_VER)
-  // at least GCC, Clang and Visual C++ support __has_trivial_destructor
+#elif defined(__GNUC__) || defined(_MSC_VER) || defined(__BORLANDC__)
+  // at least GCC, Clang, Visual C++ and Borland/Embarcadero support __has_trivial_destructor
   #define _DG_SCAL_HAS_TRIVIAL_DESTRUCTOR(T_) __has_trivial_destructor(T_)
 #else
   // other compilers might or might not have a similar builtin..
