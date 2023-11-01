@@ -1,6 +1,8 @@
 /*
- * A scoped allocator, that automatically frees all memory it allocated when it
- * goes out of scope, so it can be used as a safer[*] alloca()- (or VLA-) alternative.
+ * A scoped allocator for C++11 and newer.
+ *
+ * It automatically frees all memory it allocated when the scoped allocator goes
+ * out of scope, so it can be used as a safer[*] alloca()- (or VLA-) alternative.
  * It usually allocates memory in an existing memory block, stack-like, but if
  * allocations of >3MB are requested, it's allocated on the heap instead - of course
  * the memory is still automatically freed.
@@ -44,7 +46,14 @@
  *
  * (C) 2023 Daniel Gibson
  *
- * // TODO: license text
+ * This header-only lib is released under the Boost Software License,
+ * see end of this file for its full text.
+ *  In short: You must keep the Copyright-line(s) and license in this source file
+ *  or any source file based on (parts of) it. Otherwise you can use it as you like,
+ *  you do *not* have to release your source that uses or enhances it, and you do
+ *  not even have to mention the authors or the license in the documentation of
+ *  binary-only releases of your software (though it'd be appreciated, of course).
+ *  And of course, there is no warranty whatsoever.
  */
 
 #if 0 // Example
@@ -194,8 +203,23 @@ struct ScAlNewDummy {};
 }}
 
 // custom placement new (with custom dummy-type) so I can avoid #include <new>
-inline void* operator new(size_t s, dg::scal_impl::ScAlNewDummy d, void* mem) { return mem; }
+inline void* operator new(size_t s, dg::scal_impl::ScAlNewDummy d, void* mem) { (void)s; (void)d; return mem; }
 inline void operator delete(void*, dg::scal_impl::ScAlNewDummy, void* ) {} // only for symmetry, not actually used
+
+// abstraction for the check whether a type has a trivial destructor
+// (that doesn't need to be called)
+#if defined(__clang__)
+  // clang prefers __is_trivially_destructible (__has_trivial_destructor is deprecated there)
+  #define _DG_SCAL_HAS_TRIVIAL_DESTRUCTOR(T_) __is_trivially_destructible(T_)
+#elif defined(__GNUC__) || defined(_MSC_VER)
+  // at least GCC, Clang and Visual C++ support __has_trivial_destructor
+  #define _DG_SCAL_HAS_TRIVIAL_DESTRUCTOR(T_) __has_trivial_destructor(T_)
+#else
+  // other compilers might or might not have a similar builtin..
+  // std::is_trivially_destructible always works (but requires a potentially bloated header)
+  #include <type_traits>
+  #define _DG_SCAL_HAS_TRIVIAL_DESTRUCTOR(T_) std::is_trivially_destructible<T_>::value
+#endif
 
 namespace dg {
 	
@@ -205,7 +229,7 @@ namespace dg {
 	static_assert(MAX_SIZE_T > 0, "size_t is supposed to be unsigned!");
 
 // this namespace contains implementation details - you shouldn't use
-// those functions and types (ScopedAllocator uses them internally)
+// those functions and types directly (ScopedAllocator uses them internally)
 namespace scal_impl {
 
 /*
@@ -275,8 +299,8 @@ struct alignas(16) ChunkHeader {
 		return em->dataPtr;
 	}
 	
-	// size of this block within the stack memory
-	// if IS_EXTERNALLY_ALLOCATED, this will be sizeof(AllocatedMemBlock) + sizeof(void*),
+	// size of this block within the pseudo-stack-memory (MemBlock::memory)
+	// if IS_EXTERNALLY_ALLOCATED, this will be sizeof(AllocatedMemBlock) + sizeof(ExtMem),
 	// rounded up to the next multiple of 16
 	uint32_t GetBlockSize() {
 		uint32_t dataSize = ((flags_size & IS_EXTERNALLY_ALLOCATED) == 0)
@@ -329,7 +353,7 @@ struct PerThreadAllocator
 {
 	int curMemBlockIdx = 0;
 	enum {
-		MAX_NUM_MEMBLOCKS = 8,
+		MAX_NUM_MEMBLOCKS = 32, // TODO: could probably have even more, an uninitialized memblock just uses 16 bytes
 		MAX_MEMBLOCK_IDX = MAX_NUM_MEMBLOCKS - 1
 	};
 	MemBlock memBlocks[MAX_NUM_MEMBLOCKS]; // TODO: dynamic?
@@ -389,7 +413,9 @@ class ScopedAllocator
 	// reference to tlsPerThreadAlloc so TLS only needs to be looked up
 	// once per ScopedAllocator instance, in the constructor
 	scal_impl::PerThreadAllocator& perThreadAlloc;
-	int myScopeDepth; // PerThreadAllocator::scopeDepth, used to ensure only the innermost ScopedAllocator is used
+	// PerThreadAllocator::scopeDepth at creation time,
+	// used to ensure only the innermost ScopedAllocator is used
+	int myScopeDepth;
 	
 	// the following two are used to free all memory allocated up to the point
 	// PerThreadAllocator was at when this ScopedAllocator was created
@@ -409,6 +435,10 @@ class ScopedAllocator
 	}
 
 	// isn't copyable or movable
+	// TODO: though we could use ScopedAllocator(ScopedAllocator& sa) to copy
+	// its perThreadAlloc - in case accessing tlsPerThreadAlloc is expensive,
+	// that could be used to cheaply create another ScopedAllocator if one is
+	// available (e.g. in same function)
 	ScopedAllocator(const ScopedAllocator&) = delete;
 	ScopedAllocator(ScopedAllocator&&) = delete;
 	ScopedAllocator& operator=(const ScopedAllocator&) = delete;
@@ -428,6 +458,17 @@ public:
 		--perThreadAlloc.scopeDepth;
 	}
 
+	// frees everything that has been allocated by this ScopedAllocator
+	// ! must only be called on the innermost ScopedAllocator !
+	// You usually don't have to call this (it happens implicitly when this allocator
+	// goes out of scope), but if you want to free everything at an earlier point, use this.
+	void Reset() {
+		if(myScopeDepth != perThreadAlloc.scopeDepth) {
+			assert(0 && "Only Reset() the innermost ScopedAllocator!");
+			return;
+		}
+		perThreadAlloc.FreeUntil(startMemBlockIndex, startMemBlockOffset);
+	}
 
 	// allocate a raw buffer of given size (in bytes)
 	void* AllocRaw(size_t size) {
@@ -465,10 +506,7 @@ public:
 		if( numElems < MAX_SIZE_T / sizeof(T)) {
 			size_t bufSize = numElems*sizeof(T);
 			// if T has a "trivial" destructor, no DestructFunc is needed
-			// NOTE: if your compiler doesn't support __has_trivial_destructor(),
-			// use std::is_trivially_destructible<T>::value from <type_traits> instead
-			// (at least GCC, Clang and Visual C++ support __has_trivial_destructor)
-			scal_impl::ChunkHeader::DestructFunc* destr = __has_trivial_destructor(T) ? nullptr : destructArr<T>;
+			scal_impl::ChunkHeader::DestructFunc* destr = _DG_SCAL_HAS_TRIVIAL_DESTRUCTOR(T) ? nullptr : destructArr<T>;
 			byte* data = perThreadAlloc.Allocate(bufSize, destr);
 			if(data != nullptr) {
 				for(size_t i=0; i<numElems; ++i) {
@@ -492,8 +530,8 @@ public:
 			return nullptr;
 		}
 		size_t bufSize = sizeof(T);
-		// see AllocArray() for explanation of the following line
-		scal_impl::ChunkHeader::DestructFunc* destr = __has_trivial_destructor(T) ? nullptr : destructArr<T>;
+		// if T has a "trivial" destructor, no DestructFunc is needed
+		scal_impl::ChunkHeader::DestructFunc* destr = _DG_SCAL_HAS_TRIVIAL_DESTRUCTOR(T) ? nullptr : destructArr<T>;
 		byte* data = perThreadAlloc.Allocate(bufSize, destr);
 		if(data != nullptr) {
 			// note that unlike AllocArray() this supports calling move constructors
@@ -661,6 +699,10 @@ byte* MemBlock::Allocate(size_t size, ChunkHeader::DestructFunc* destructFunc) {
 
 	byte* ret = nullptr;
 
+	// TODO: could (optionally) put some unused memory before and after the
+	//  returned memory region, which ASan could poison to detect out of bound access
+	// (see https://github.com/gcc-mirror/gcc/blob/master/libsanitizer/include/sanitizer/asan_interface.h)
+
 	ChunkHeader* chunk = (ChunkHeader*)(memory+lastOffset);
 	chunk->offsetToPrev = offsetToPrev;
 	chunk->destructFunc = destructFunc;
@@ -671,8 +713,14 @@ byte* MemBlock::Allocate(size_t size, ChunkHeader::DestructFunc* destructFunc) {
 		chunk->flags_size = ChunkHeader::IS_EXTERNALLY_ALLOCATED;
 		ChunkHeader::ExtMem* em = (ChunkHeader::ExtMem*)chunk->data;
 		ret = HeapAlloc(size);
-		em->dataPtr = ret;
-		em->dataSize = size;
+		if(ret != nullptr) {
+			em->dataPtr = ret;
+			em->dataSize = size;
+		} else { // ret is NULL
+			chunk->destructFunc = nullptr;
+			em->dataPtr = nullptr;
+			em->dataSize = 0;
+		}
 	}
 
 	return ret;
@@ -692,3 +740,30 @@ byte* PerThreadAllocator::GrowAndAllocate(size_t size, scal_impl::ChunkHeader::D
 
 }} //namespace dg::scal_impl
 #endif // DG_SCOPEDALLOCATOR_IMPL
+
+
+/*
+ * Boost Software License - Version 1.0 - August 17th, 2003
+ *
+ *  Permission is hereby granted, free of charge, to any person or organization
+ *  obtaining a copy of the software and accompanying documentation covered by
+ *  this license (the "Software") to use, reproduce, display, distribute,
+ *  execute, and transmit the Software, and to prepare derivative works of the
+ *  Software, and to permit third-parties to whom the Software is furnished to
+ *  do so, all subject to the following:
+ *
+ *  The copyright notices in the Software and this entire statement, including
+ *  the above license grant, this restriction and the following disclaimer,
+ *  must be included in all copies of the Software, in whole or in part, and
+ *  all derivative works of the Software, unless such copies or derivative
+ *  works are solely in the form of machine-executable object code generated by
+ *  a source language processor.
+ *
+ *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN NO EVENT
+ *  SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE
+ *  FOR ANY DAMAGES OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE,
+ *  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ *  DEALINGS IN THE SOFTWARE.
+ */
