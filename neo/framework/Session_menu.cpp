@@ -1217,6 +1217,7 @@ void idSessionLocal::GuiFrameEvents() {
 			guiMainMenu->SetKeyBindingNames();
 		}
 		joy_gamepadLayout.ClearModified();
+		// XXX
 	}
 
 	// stop generating move and button commands when a local console or menu is active

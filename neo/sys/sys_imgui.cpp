@@ -19,15 +19,19 @@ typedef char* (*MY_XGETDEFAULTFUN)(Display*, const char*, const char*);
 
 extern void Com_DrawDhewm3SettingsMenu(); // in framework/dhewm3SettingsMenu.cpp
 
+static idCVar imgui_scale( "imgui_scale", "-1.0", CVAR_SYSTEM|CVAR_FLOAT|CVAR_ARCHIVE, "factor to scale ImGUI menus by (-1: auto)" ); // TODO: limit values?
+
 namespace D3 {
 namespace ImGuiHooks {
+
+#include "proggyvector_font.h"
 
 static SDL_Window* sdlWindow = NULL;
 ImGuiContext* imguiCtx = NULL;
 static bool haveNewFrame = false;
 static int openImguiWindows = 0; // or-ed enum D3ImGuiWindow values
 
-float GetDefaultDPI()
+static float GetDefaultDPI()
 {
 	SDL_Window* win = sdlWindow;
 	float dpi = -1.0f;
@@ -67,13 +71,38 @@ float GetDefaultDPI()
 	return dpi;
 }
 
+static float GetDefaultScale()
+{
+	float ret = GetDefaultDPI() / 96.0f;
+	ret = round(ret*2.0)*0.5; // round to .0 or .5
+	return ret;
+}
+
+float GetScale()
+{
+	float ret = imgui_scale.GetFloat();
+	if (ret < 0.0f) {
+		ret = GetDefaultScale();
+	}
+	return ret;
+}
+
+void SetScale( float scale )
+{
+	ImGuiIO& io = ImGui::GetIO();
+	float realScale = (scale < 0.0f) ? GetDefaultScale() : scale;
+	io.FontGlobalScale = realScale;
+	// TODO: could instead set fontsize to 18.0f * scale
+	//  (io.Fonts->ClearFonts() and then add again with new size - but must be done before NewFrame() / after EndFrame())
+	imgui_scale.SetFloat( scale );
+}
+
 // using void* instead of SDL_Window and SDL_GLContext to avoid dragging SDL headers into sys_imgui.h
 bool Init(void* _sdlWindow, void* sdlGlContext)
 {
 	common->Printf( "Initializing ImGui\n" );
 
-	SDL_Window* win = (SDL_Window*)_sdlWindow;
-	sdlWindow = win;
+	sdlWindow = (SDL_Window*)_sdlWindow;
 
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
@@ -104,24 +133,15 @@ bool Init(void* _sdlWindow, void* sdlGlContext)
 	colors[ImGuiCol_TitleBg]                = ImVec4(0.28f, 0.36f, 0.48f, 0.88f);
 	colors[ImGuiCol_TabHovered]             = ImVec4(0.42f, 0.69f, 1.00f, 0.80f);
 	colors[ImGuiCol_TabActive]              = ImVec4(0.24f, 0.51f, 0.83f, 1.00f);
-#if 0
-	float dpi = getFontDPI(win);
-	printf("XXX dpi = %f\n", dpi);
-	if (dpi != -1.0f) {
-		float fontScale = dpi / 96.0f; // TODO: is 96dpi not the default anywhere? macOS maybe?
-		fontScale = round(fontScale*2.0)*0.5; // round to .0 or .5
-		io.FontGlobalScale = fontScale;
-		printf("fontscale: %f\n", fontScale);
-		ImFontConfig fontCfg;
-		//fontCfg.OversampleH = fontCfg.OversampleV = 1;
-		fontCfg.PixelSnapH = true;
-		fontCfg.RasterizerDensity = fontScale;
-		io.Fonts->AddFontDefault(&fontCfg);
-	}
-#endif
+
+	ImFontConfig fontCfg;
+	strcpy(fontCfg.Name, "ProggyVector");
+	ImFont* font = io.Fonts->AddFontFromMemoryCompressedTTF(ProggyVector_compressed_data, ProggyVector_compressed_size, 18.0f, nullptr);
+
+	SetScale( GetScale() );
 
 	// Setup Platform/Renderer backends
-	if ( ! ImGui_ImplSDL2_InitForOpenGL( win, sdlGlContext ) ) {
+	if ( ! ImGui_ImplSDL2_InitForOpenGL( sdlWindow, sdlGlContext ) ) {
 		ImGui::DestroyContext( imguiCtx );
 		imguiCtx = NULL;
 		common->Warning( "Failed to initialize ImGui SDL platform backend!\n" );
@@ -194,7 +214,7 @@ void NewFrame()
 bool ProcessEvent(const void* sdlEvent)
 {
 	if (openImguiWindows == 0)
-			return false;
+		return false;
 
 	const SDL_Event* ev = (const SDL_Event*)sdlEvent;
 	// ImGui_ImplSDL2_ProcessEvent() doc says:
@@ -282,6 +302,11 @@ void OpenWindow( D3ImGuiWindow win )
 void CloseWindow( D3ImGuiWindow win )
 {
 	openImguiWindows &= ~win;
+}
+
+int GetOpenWindowsMask()
+{
+	return openImguiWindows;
 }
 
 }} //namespace D3::ImGuiHooks
