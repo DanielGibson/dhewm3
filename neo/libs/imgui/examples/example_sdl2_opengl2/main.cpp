@@ -49,7 +49,7 @@ static void AddTooltip( const char* text )
 {
 	if ( ImGui::BeginItemTooltip() )
 	{
-		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+		ImGui::PushTextWrapPos( ImGui::GetFontSize() * 35.0f );
 		ImGui::TextUnformatted( text );
 		ImGui::PopTextWrapPos();
 		ImGui::EndTooltip();
@@ -66,6 +66,48 @@ static void AddDescrTooltip( const char* description )
 		AddTooltip( description );
 	}
 }
+
+static int IsKeyPressed( ImGuiKey key ) {
+	return ImGui::IsKeyPressed( key, false );
+}
+
+	// by default enter and space both select a cell (when using cursor keys for navigation)
+	// => could use only space for select, and enter for "set binding"?
+	// ImGuiKey_Enter, ImGuiKey_KeypadEnter (activate binding mode for selected entry, like double-click)
+	// ImGuiKey_Escape (cancel binding mode or unselect if not in binding mode)
+	// ImGuiKey_Backspace, ImGuiKey_Delete, (delete currently selected binding(s))
+	// ImGuiKey_GamepadFaceDown (like enter) ImGuiKey_GamepadFaceRight (like Esc)
+	//   could use ImGuiKey_GamepadL2 (left trigger) for delete?
+	//   in idUserInterfaceLocal::HandleEvent() we treat left trigger as Enter
+	//  but what gamepad button to use for select?
+	//   - maybe ImGuiKey_GamepadFaceUp for enter and facedown for select?
+	// ImGui::IsKeyPressed(key, false);
+
+static bool IsSelectionKeyPressed() {
+	return IsKeyPressed( ImGuiKey_Space ); // TODO: any gamepad button?
+}
+
+static bool IsBindNowKeyPressed() {
+	return IsKeyPressed( ImGuiKey_Enter ) || IsKeyPressed( ImGuiKey_KeypadEnter ); // TODO: gamepad button?
+}
+
+static bool IsClearKeyPressed() {
+	return IsKeyPressed( ImGuiKey_Delete ) || IsKeyPressed( ImGuiKey_Backspace ); // TODO: gamepad button?
+}
+
+static bool IsCancelKeyPressed() {
+	// Note: In Doom3, Escape opens/closes the main menu, so in dhewm3 the gamepad Start button
+	//       behaves the same, incl. the specialty that it can't be bound by the user
+	return IsKeyPressed( ImGuiKey_Escape ) || IsKeyPressed( ImGuiKey_GamepadStart );
+}
+
+static bool IsUnselectKeyPressed() {
+	// xbox B is probably suitable for unsetting selection - TODO: OTOH, does selection even make sense with gamepad? isn't the implicit focus enough?
+	return IsCancelKeyPressed() || IsKeyPressed( ImGuiKey_GamepadFaceRight );
+}
+
+// background color for the first column of the binding table, that contains the name of the action
+static ImU32 displayNameBGColor = 0;
 
 struct BindingEntry {
 	idStr command; // "_impulse3" or "_forward" or similar - or "" for heading entry
@@ -105,54 +147,102 @@ struct BindingEntry {
 		// TODO: get bindings
 	}
 
-	bool Draw( int numBindings, bool isSelected )
+	// also updates this->selectedColumn
+	bool UpdateSelectionState( int column, bool isSelected, bool *wantBindNow, bool *wantClearNow )
 	{
-		if ( IsHeading() ) {
-			ImGui::SeparatorText( displayName );
-			if(description) {
-				AddDescrTooltip(description);
-			}
-		} else {
-			ImGui::PushID(command);
-
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex( 0 );
-
-			// by default enter and space both select a cell (when using cursor keys for navigation)
-			// => could use only space for select, and enter for "set binding"?
-			// ImGuiKey_Enter, ImGuiKey_KeypadEnter (activate binding mode for selected entry, like double-click)
-			// ImGuiKey_Escape (cancel binding mode or unselect if not in binding mode)
-			// ImGuiKey_Backspace, ImGuiKey_Delete, (delete currently selected binding(s))
-			// ImGuiKey_GamepadFaceDown (like enter) ImGuiKey_GamepadFaceRight (like Esc)
-			//   could use ImGuiKey_GamepadL2 (left trigger) for delete?
-			//   in idUserInterfaceLocal::HandleEvent() we treat left trigger as Enter
-			//  but what gamepad button to use for select?
-			//   - maybe ImGuiKey_GamepadFaceUp for enter and facedown for select?
-			// ImGui::IsKeyPressed(key, false);
-
-			// ImGui::SetItemDefaultFocus() for clicked item? is that the same as selecting with cursor keys?
-
-			bool doubleClick = ImGui::IsMouseDoubleClicked( 0 );
-
-			bool selectThis = isSelected && (selectedColumn == 0);
-			// TODO: ImGuiSelectableFlags_AllowOverlap ?
-			if ( ImGui::Selectable( "##0", selectThis, ImGuiSelectableFlags_AllowDoubleClick ) ) {
-				if ( doubleClick ) {
-					// TODO: add binding
+		if ( ImGui::IsItemFocused() ) {
+			//printf("> %s col %d is focused\n", displayName.c_str(), column);
+			// Note: even when using the mouse, clicking a selectable will make it focused,
+			//       so it's possible to select an action (or specific binding of an action)
+			//       with the mouse and then press Enter to (re)bind it or Delete to clear it
+			if ( IsSelectionKeyPressed() ) {
+				if ( isSelected && selectedColumn == column ) {
+					printf("focus unselect\n");
+					isSelected = false;
+					selectedColumn = -1;
 				} else {
-					isSelected = !selectThis;
-					selectedColumn = isSelected ? 0 : -1;
+					printf("focus select\n");
+					isSelected = true;
+					selectedColumn = column;
 				}
+			} else if ( IsBindNowKeyPressed() ) {
+				printf("focus bind now\n");
+				*wantBindNow = true;
+				isSelected = true;
+				selectedColumn = column;
+			} else if ( IsClearKeyPressed() ) {
+				printf("focus clear now\n");
+				*wantClearNow = true;
+				isSelected = true;
+				selectedColumn = column;
 			}
+		}
 
-			// if the first column (action name, like "Move Left") is hovered, highlight the whole row
-			if ( ImGui::IsItemHovered() ) {
+		if ( ImGui::IsItemHovered() ) {
+			if ( column == 0 ) {
+				// if the first column (action name, like "Move Left") is hovered, highlight the whole row
+				// (this is the same "hovered" color also used by Selectable when it's actually hovered)
+				// TODO: maybe ImGuiCol_HeaderActive would look even better, esp. when using HeaderHovered for the isSelected case below
+				// TODO: and TBH it would probably be nice if one could tell "hovered and selected" and "hovered and not selected" apart..
 				ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
 				ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, highlightRowColor );
 			}
 
+			bool doubleClicked = ImGui::IsMouseDoubleClicked( 0 );
+			bool singleClicked = !doubleClicked && ImGui::IsMouseClicked( 0 );
+
+			if ( singleClicked ) {
+				if ( isSelected && selectedColumn == column ) {
+					printf("hover unselect\n");
+					isSelected = false;
+					selectedColumn = -1;
+				} else {
+					printf("hover select\n");
+					isSelected = true;
+					selectedColumn = column;
+				}
+			} else if ( doubleClicked ) {
+				printf("hover doubleclick\n");
+				*wantBindNow = true;
+				isSelected = true;
+				selectedColumn = column;
+			}
+		} else if ( isSelected && selectedColumn == column ) { // not hovered, but selected (either still selected, or newly through focus)
+			// this is the regular "selected cell/row" color that Selectable would use
+			// TODO: maybe a more intensive color like ImGuiCol_HeaderHovered would be nicer.
+			ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_Header) );
+			ImGuiTableBgTarget bgColorTarget = (column == 0) ? ImGuiTableBgTarget_RowBg0 : ImGuiTableBgTarget_CellBg;
+			ImGui::TableSetBgColor( bgColorTarget, highlightRowColor );
+		}
+
+		return isSelected;
+	}
+
+	bool Draw( int numBindings, bool isSelected )
+	{
+		if ( IsHeading() ) {
+			ImGui::SeparatorText( displayName );
+			if ( description ) {
+				AddDescrTooltip( description );
+			}
+		} else {
+			ImGui::PushID( command );
+
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex( 0 );
+
+			// the first column (with the display name in it) gets a different background color
+			ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, displayNameBGColor );
+
+			bool wantBindNow = false;
+			bool wantClearNow = false;
+
+			// not really using the selectable feature, mostly making it selectable
+			// so keyboard/gamepad navigation works
+			ImGui::Selectable( "##0", false, 0 );
+			isSelected = UpdateSelectionState( 0, isSelected, &wantBindNow, &wantClearNow );
+
 			ImGui::SameLine();
-			// TODO ImGui::IsMouseDoubleClicked( 0 );
 			ImGui::TextUnformatted( displayName );
 
 			AddTooltip( command );
@@ -161,24 +251,29 @@ struct BindingEntry {
 				AddDescrTooltip( description );
 			}
 
-			for ( int i=1; i <= numBindings ; ++i ) {
-				ImGui::TableSetColumnIndex( i );
+			for ( int col=1; col <= numBindings ; ++col ) {
+				ImGui::TableSetColumnIndex( col );
 
 				char selID[5];
-				snprintf(selID, sizeof(selID), "##%d", i);
-				selectThis = isSelected && ((selectedColumn == i) || selectedColumn == 0);
-				if ( ImGui::Selectable( selID, selectThis, ImGuiSelectableFlags_AllowDoubleClick ) ) {
-					if ( doubleClick ) {
-						// TODO: replace this binding (or add one if this cell is empty)
-					} else {
-						isSelected = !selectThis;
-						selectedColumn = isSelected ? i : -1;
-					}
-				}
+				snprintf( selID, sizeof(selID), "##%d", col );
+				ImGui::Selectable( selID, false, 0 );
+				isSelected = UpdateSelectionState( col, isSelected, &wantBindNow , &wantClearNow );
+
 				ImGui::SameLine();
-				ImGui::Text( "binding %d", i );
+				// TODO: actual binding
+				ImGui::Text( "binding %d", col );
 			}
+
+			if ( wantBindNow ) {
+				// TODO
+			} else if ( wantClearNow ) {
+				// TODO
+			}
+
 			ImGui::PopID();
+			if ( !isSelected ) {
+				selectedColumn = -1;
+			}
 			return isSelected;
 		}
 		return false;
@@ -200,9 +295,17 @@ static void DrawBindingsMenu()
 {
 	ImGui::PushItemWidth(70.0f); // TODO: somehow dependent on font size and/or scale or something
 	static int numBindings = 4; // TODO: in real code, save in CVar (in_maxBindingsPerCommand or sth)
-	ImGui::InputInt("Number of Binding columns to show", &numBindings);
-	numBindings = idMath::ClampInt(1, 10, numBindings);
+	ImGui::InputInt( "Number of Binding columns to show", &numBindings );
+	numBindings = idMath::ClampInt( 1, 10, numBindings );
 	ImGui::PopItemWidth();
+
+	{
+		// calculate the background color for the first column of the key binding tables
+		// (it contains the action, while the other columns contain the keys bound to that action)
+		ImVec4 bgColor = ImGui::GetStyleColorVec4( ImGuiCol_TableHeaderBg );
+		bgColor.w = 0.5f;
+		displayNameBGColor = ImGui::GetColorU32( bgColor );
+	}
 
 	ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
 
@@ -224,9 +327,14 @@ static void DrawBindingsMenu()
 			// to go in a table, so start a new one
 			inTable = true;
 			char tableID[10];
-			snprintf(tableID, sizeof(tableID), "bindTab%d", tableNum);
+			snprintf( tableID, sizeof(tableID), "bindTab%d", tableNum );
 			++tableNum;
-			lastBeginTable = ImGui::BeginTable(tableID, numBindings+1, tableFlags);
+			lastBeginTable = ImGui::BeginTable( tableID, numBindings+1, tableFlags );
+			if ( lastBeginTable ) {
+				ImGui::TableSetupScrollFreeze(1, 0);
+				const float actionColumnWidth = 100.0f; // TODO: set sensible value, depending on font size/scale
+				ImGui::TableSetupColumn( "Action", ImGuiTableColumnFlags_WidthFixed, actionColumnWidth );
+			}
 		} else if ( isHeading && inTable ) {
 			// we've been adding elements to a table (unless lastBeginTable = false) that hasn't
 			// been closed with EndTable() yet, but now we're at a heading so the table is done
@@ -239,6 +347,9 @@ static void DrawBindingsMenu()
 		if ( lastBeginTable ) { // if ImGui::BeginTable() returned false, don't draw its elements
 			if ( be.Draw(numBindings, selectedRow == i) ) {
 				selectedRow = i;
+			} else if ( selectedRow == i ) {
+				// this row was selected, but be.Draw() returned false, so unselect it
+				selectedRow = -1;
 			}
 		}
 	}
