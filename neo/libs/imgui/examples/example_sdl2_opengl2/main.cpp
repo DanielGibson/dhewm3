@@ -109,6 +109,13 @@ static bool IsUnselectKeyPressed() {
 // background color for the first column of the binding table, that contains the name of the action
 static ImU32 displayNameBGColor = 0;
 
+enum BindingEntrySelectionState {
+	BESS_NotSelected = 0,
+	BESS_Selected,
+	BESS_WantBind,
+	BESS_WantClear
+};
+
 struct BindingEntry {
 	idStr command; // "_impulse3" or "_forward" or similar - or "" for heading entry
 	idStr displayName;
@@ -218,7 +225,7 @@ struct BindingEntry {
 		return isSelected;
 	}
 
-	bool Draw( int numBindings, bool isSelected )
+	BindingEntrySelectionState Draw( int numBindings, BindingEntrySelectionState oldSelState )
 	{
 		if ( IsHeading() ) {
 			ImGui::SeparatorText( displayName );
@@ -236,6 +243,9 @@ struct BindingEntry {
 
 			bool wantBindNow = false;
 			bool wantClearNow = false;
+			bool isSelected = oldSelState != BESS_NotSelected;
+
+			// TODO: ignore all key presses if oldSelState > BESS_Selected, but still *draw* selections
 
 			// not really using the selectable feature, mostly making it selectable
 			// so keyboard/gamepad navigation works
@@ -264,19 +274,21 @@ struct BindingEntry {
 				ImGui::Text( "binding %d", col );
 			}
 
-			if ( wantBindNow ) {
-				// TODO
-			} else if ( wantClearNow ) {
-				// TODO
-			}
-
 			ImGui::PopID();
 			if ( !isSelected ) {
 				selectedColumn = -1;
+				return BESS_NotSelected;
 			}
-			return isSelected;
+			if ( wantBindNow ) {
+				return BESS_WantBind;
+			} else if ( wantClearNow ) {
+				return BESS_WantClear;
+			} else if( oldSelState != BESS_NotSelected ) {
+				return oldSelState;
+			}
+			return BESS_Selected;
 		}
-		return false;
+		return BESS_NotSelected;
 	}
 };
 
@@ -307,8 +319,38 @@ static void DrawBindingsMenu()
 		displayNameBGColor = ImGui::GetColorU32( bgColor );
 	}
 
-	ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
+	static int selectedRow = -1;
+	static BindingEntrySelectionState selectionState = BESS_NotSelected;
+	static bool popupOpened = false;
+	bool disabled = false;
+	if ( selectionState > BESS_Selected ) { // WantBind or WantClear => show a popup
+		const char* popupName = "Bind or Clear TODO";
+		if ( !popupOpened ) {
+			ImGui::OpenPopup( popupName );
+			popupOpened = true;
+		}
 
+		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f) );
+
+		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			ImGui::Text("Bind or Clear or whatever?");
+			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
+				ImGui::CloseCurrentPopup();
+				selectionState = BESS_Selected;
+				popupOpened = false;
+			}
+			ImGui::EndPopup();
+		}
+		// render the binding tables "disabled", unless the popup was just closed
+		if ( selectionState > BESS_Selected ) {
+			ImGui::BeginDisabled();
+			disabled = true;
+		}
+	}
+
+	ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
 	// inTable: are we currently adding elements to a table of bindings?
 	//  (we're not when adding a heading from bindingEntries: existing tables are ended
 	//   before a heading and a new table is started afterwards)
@@ -317,7 +359,6 @@ static void DrawBindingsMenu()
 	// (init to true so the first heading before any bindings is shown)
 	bool lastBeginTable = true;
 	int tableNum = 1;
-	static int selectedRow = -1;
 	for ( int i=0; i < IM_ARRAYSIZE(bindingEntries); ++i ) {
 		BindingEntry& be = bindingEntries[i];
 		bool isHeading = be.IsHeading();
@@ -345,10 +386,13 @@ static void DrawBindingsMenu()
 		}
 
 		if ( lastBeginTable ) { // if ImGui::BeginTable() returned false, don't draw its elements
-			if ( be.Draw(numBindings, selectedRow == i) ) {
+			BindingEntrySelectionState bess = (selectedRow == i) ? selectionState : BESS_NotSelected;
+			bess = be.Draw(numBindings, bess);
+			if ( bess != BESS_NotSelected ) {
 				selectedRow = i;
+				selectionState = bess;
 			} else if ( selectedRow == i ) {
-				// this row was selected, but be.Draw() returned false, so unselect it
+				// this row was selected, but be.Draw() returned BESS_NotSelected, so unselect it
 				selectedRow = -1;
 			}
 		}
@@ -356,6 +400,10 @@ static void DrawBindingsMenu()
 	if ( inTable && lastBeginTable ) {
 		// end the last binding table, if any
 		ImGui::EndTable();
+	}
+
+	if ( disabled ) {
+		ImGui::EndDisabled();
 	}
 }
 
