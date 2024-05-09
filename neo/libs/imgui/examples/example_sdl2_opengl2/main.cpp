@@ -188,10 +188,9 @@ struct BindingEntry {
 		if ( ImGui::IsItemHovered() ) {
 			if ( column == 0 ) {
 				// if the first column (action name, like "Move Left") is hovered, highlight the whole row
-				// (this is the same "hovered" color also used by Selectable when it's actually hovered)
-				// TODO: maybe ImGuiCol_HeaderActive would look even better, esp. when using HeaderHovered for the isSelected case below
-				// TODO: and TBH it would probably be nice if one could tell "hovered and selected" and "hovered and not selected" apart..
-				ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
+				// A normal Selectable would use ImGuiCol_HeaderHovered, but I use that as the "selected"
+				// color (in Draw()), so use the next brighter thing (ImGuiCol_HeaderActive) here.
+				ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive) );
 				ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, highlightRowColor );
 			}
 
@@ -214,18 +213,12 @@ struct BindingEntry {
 				isSelected = true;
 				selectedColumn = column;
 			}
-		} else if ( isSelected && selectedColumn == column ) { // not hovered, but selected (either still selected, or newly through focus)
-			// this is the regular "selected cell/row" color that Selectable would use
-			// TODO: maybe a more intensive color like ImGuiCol_HeaderHovered would be nicer.
-			ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_Header) );
-			ImGuiTableBgTarget bgColorTarget = (column == 0) ? ImGuiTableBgTarget_RowBg0 : ImGuiTableBgTarget_CellBg;
-			ImGui::TableSetBgColor( bgColorTarget, highlightRowColor );
 		}
 
 		return isSelected;
 	}
 
-	BindingEntrySelectionState Draw( int numBindings, BindingEntrySelectionState oldSelState )
+	BindingEntrySelectionState Draw( int numBindings, const BindingEntrySelectionState oldSelState )
 	{
 		if ( IsHeading() ) {
 			ImGui::SeparatorText( displayName );
@@ -241,16 +234,30 @@ struct BindingEntry {
 			// the first column (with the display name in it) gets a different background color
 			ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, displayNameBGColor );
 
-			bool wantBindNow = false;
-			bool wantClearNow = false;
-			bool isSelected = oldSelState != BESS_NotSelected;
-
-			// TODO: ignore all key presses if oldSelState > BESS_Selected, but still *draw* selections
+			bool wantBind   = (oldSelState == BESS_WantBind);
+			bool wantClear  = (oldSelState == BESS_WantClear);
+			bool isSelected = (oldSelState != BESS_NotSelected);
+			// if currently a popup is shown for creating a new binding or clearing one,
+			// everything is still rendered, but in a disabled (greyed out) state
+			// and shouldn't handle any input
+			bool ignoreInput = (oldSelState > BESS_Selected);
 
 			// not really using the selectable feature, mostly making it selectable
 			// so keyboard/gamepad navigation works
 			ImGui::Selectable( "##0", false, 0 );
-			isSelected = UpdateSelectionState( 0, isSelected, &wantBindNow, &wantClearNow );
+
+			if ( ignoreInput ) {
+				isSelected = UpdateSelectionState( 0, isSelected, &wantBind, &wantClear );
+			}
+			// the displayName column is selected => highlight the whole row
+			if ( isSelected && selectedColumn == 0 ) {
+				// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
+				// but ImGuiCol_HeaderHovered is more visible, IMO
+				ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
+				ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, highlightRowColor );
+				// extra highlighting for this the column 0 cell (otherwise it'd look darker due to displayNameBGColor)
+				ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
+			}
 
 			ImGui::SameLine();
 			ImGui::TextUnformatted( displayName );
@@ -267,7 +274,16 @@ struct BindingEntry {
 				char selID[5];
 				snprintf( selID, sizeof(selID), "##%d", col );
 				ImGui::Selectable( selID, false, 0 );
-				isSelected = UpdateSelectionState( col, isSelected, &wantBindNow , &wantClearNow );
+				if ( ignoreInput ) {
+					isSelected = UpdateSelectionState( col, isSelected, &wantBind , &wantClear );
+				}
+				// this column is selected => highlight it
+				if ( isSelected && selectedColumn == col ) {
+					// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
+					// but ImGuiCol_HeaderHovered is more visible, IMO
+					ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
+					ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
+				}
 
 				ImGui::SameLine();
 				// TODO: actual binding
@@ -279,9 +295,9 @@ struct BindingEntry {
 				selectedColumn = -1;
 				return BESS_NotSelected;
 			}
-			if ( wantBindNow ) {
+			if ( wantBind ) {
 				return BESS_WantBind;
-			} else if ( wantClearNow ) {
+			} else if ( wantClear ) {
 				return BESS_WantClear;
 			} else if( oldSelState != BESS_NotSelected ) {
 				return oldSelState;
@@ -322,7 +338,6 @@ static void DrawBindingsMenu()
 	static int selectedRow = -1;
 	static BindingEntrySelectionState selectionState = BESS_NotSelected;
 	static bool popupOpened = false;
-	bool disabled = false;
 	if ( selectionState > BESS_Selected ) { // WantBind or WantClear => show a popup
 		const char* popupName = "Bind or Clear TODO";
 		if ( !popupOpened ) {
@@ -342,11 +357,6 @@ static void DrawBindingsMenu()
 				popupOpened = false;
 			}
 			ImGui::EndPopup();
-		}
-		// render the binding tables "disabled", unless the popup was just closed
-		if ( selectionState > BESS_Selected ) {
-			ImGui::BeginDisabled();
-			disabled = true;
 		}
 	}
 
@@ -368,8 +378,7 @@ static void DrawBindingsMenu()
 			// to go in a table, so start a new one
 			inTable = true;
 			char tableID[10];
-			snprintf( tableID, sizeof(tableID), "bindTab%d", tableNum );
-			++tableNum;
+			snprintf( tableID, sizeof(tableID), "bindTab%d", tableNum++ );
 			lastBeginTable = ImGui::BeginTable( tableID, numBindings+1, tableFlags );
 			if ( lastBeginTable ) {
 				ImGui::TableSetupScrollFreeze(1, 0);
@@ -400,10 +409,6 @@ static void DrawBindingsMenu()
 	if ( inTable && lastBeginTable ) {
 		// end the last binding table, if any
 		ImGui::EndTable();
-	}
-
-	if ( disabled ) {
-		ImGui::EndDisabled();
 	}
 }
 
