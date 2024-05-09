@@ -155,7 +155,7 @@ struct BindingEntry {
 	}
 
 	// also updates this->selectedColumn
-	bool UpdateSelectionState( int column, bool isSelected, bool *wantBindNow, bool *wantClearNow )
+	void UpdateSelectionState( int column, /* in+out */ BindingEntrySelectionState& selState )
 	{
 		if ( ImGui::IsItemFocused() ) {
 			//printf("> %s col %d is focused\n", displayName.c_str(), column);
@@ -163,24 +163,22 @@ struct BindingEntry {
 			//       so it's possible to select an action (or specific binding of an action)
 			//       with the mouse and then press Enter to (re)bind it or Delete to clear it
 			if ( IsSelectionKeyPressed() ) {
-				if ( isSelected && selectedColumn == column ) {
+				if ( selState == BESS_Selected && selectedColumn == column ) {
 					printf("focus unselect\n");
-					isSelected = false;
+					selState = BESS_NotSelected;
 					selectedColumn = -1;
 				} else {
 					printf("focus select\n");
-					isSelected = true;
+					selState = BESS_Selected;
 					selectedColumn = column;
 				}
 			} else if ( IsBindNowKeyPressed() ) {
 				printf("focus bind now\n");
-				*wantBindNow = true;
-				isSelected = true;
+				selState = BESS_WantBind;
 				selectedColumn = column;
 			} else if ( IsClearKeyPressed() ) {
 				printf("focus clear now\n");
-				*wantClearNow = true;
-				isSelected = true;
+				selState = BESS_WantClear;
 				selectedColumn = column;
 			}
 		}
@@ -198,24 +196,21 @@ struct BindingEntry {
 			bool singleClicked = !doubleClicked && ImGui::IsMouseClicked( 0 );
 
 			if ( singleClicked ) {
-				if ( isSelected && selectedColumn == column ) {
+				if ( selState == BESS_Selected && selectedColumn == column ) {
 					printf("hover unselect\n");
-					isSelected = false;
+					selState = BESS_NotSelected;
 					selectedColumn = -1;
 				} else {
 					printf("hover select\n");
-					isSelected = true;
+					selState = BESS_Selected;
 					selectedColumn = column;
 				}
 			} else if ( doubleClicked ) {
 				printf("hover doubleclick\n");
-				*wantBindNow = true;
-				isSelected = true;
+				selState = BESS_WantBind;
 				selectedColumn = column;
 			}
 		}
-
-		return isSelected;
 	}
 
 	BindingEntrySelectionState Draw( int numBindings, const BindingEntrySelectionState oldSelState )
@@ -234,9 +229,7 @@ struct BindingEntry {
 			// the first column (with the display name in it) gets a different background color
 			ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, displayNameBGColor );
 
-			bool wantBind   = (oldSelState == BESS_WantBind);
-			bool wantClear  = (oldSelState == BESS_WantClear);
-			bool isSelected = (oldSelState != BESS_NotSelected);
+			BindingEntrySelectionState newSelState = oldSelState;
 			// if currently a popup is shown for creating a new binding or clearing one,
 			// everything is still rendered, but in a disabled (greyed out) state
 			// and shouldn't handle any input
@@ -246,11 +239,11 @@ struct BindingEntry {
 			// so keyboard/gamepad navigation works
 			ImGui::Selectable( "##0", false, 0 );
 
-			if ( ignoreInput ) {
-				isSelected = UpdateSelectionState( 0, isSelected, &wantBind, &wantClear );
+			if ( !ignoreInput ) {
+				UpdateSelectionState( 0, newSelState );
 			}
 			// the displayName column is selected => highlight the whole row
-			if ( isSelected && selectedColumn == 0 ) {
+			if ( newSelState != BESS_NotSelected && selectedColumn == 0 ) {
 				// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
 				// but ImGuiCol_HeaderHovered is more visible, IMO
 				ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
@@ -274,11 +267,11 @@ struct BindingEntry {
 				char selID[5];
 				snprintf( selID, sizeof(selID), "##%d", col );
 				ImGui::Selectable( selID, false, 0 );
-				if ( ignoreInput ) {
-					isSelected = UpdateSelectionState( col, isSelected, &wantBind , &wantClear );
+				if ( !ignoreInput ) {
+					UpdateSelectionState( col, newSelState );
 				}
 				// this column is selected => highlight it
-				if ( isSelected && selectedColumn == col ) {
+				if ( newSelState != BESS_NotSelected && selectedColumn == col ) {
 					// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
 					// but ImGuiCol_HeaderHovered is more visible, IMO
 					ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
@@ -291,18 +284,11 @@ struct BindingEntry {
 			}
 
 			ImGui::PopID();
-			if ( !isSelected ) {
+
+			if ( newSelState == BESS_NotSelected ) {
 				selectedColumn = -1;
-				return BESS_NotSelected;
 			}
-			if ( wantBind ) {
-				return BESS_WantBind;
-			} else if ( wantClear ) {
-				return BESS_WantClear;
-			} else if( oldSelState != BESS_NotSelected ) {
-				return oldSelState;
-			}
-			return BESS_Selected;
+			return newSelState;
 		}
 		return BESS_NotSelected;
 	}
