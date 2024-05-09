@@ -157,59 +157,80 @@ struct BindingEntry {
 	// also updates this->selectedColumn
 	void UpdateSelectionState( int column, /* in+out */ BindingEntrySelectionState& selState )
 	{
-		if ( ImGui::IsItemFocused() ) {
-			//printf("> %s col %d is focused\n", displayName.c_str(), column);
-			// Note: even when using the mouse, clicking a selectable will make it focused,
-			//       so it's possible to select an action (or specific binding of an action)
-			//       with the mouse and then press Enter to (re)bind it or Delete to clear it
-			if ( IsSelectionKeyPressed() ) {
-				if ( selState == BESS_Selected && selectedColumn == column ) {
-					printf("focus unselect\n");
-					selState = BESS_NotSelected;
-					selectedColumn = -1;
-				} else {
-					printf("focus select\n");
-					selState = BESS_Selected;
+		// if currently a popup is shown for creating a new binding or clearing one (BESS_WantBind
+		// or BESS_WantClear), everything is still rendered, but in a disabled (greyed out) state
+		// and shouldn't handle any input
+		if ( selState < BESS_WantBind ) {
+			if ( ImGui::IsItemFocused() ) {
+				//printf("> %s col %d is focused\n", displayName.c_str(), column);
+				// Note: even when using the mouse, clicking a selectable will make it focused,
+				//       so it's possible to select an action (or specific binding of an action)
+				//       with the mouse and then press Enter to (re)bind it or Delete to clear it
+				if ( IsSelectionKeyPressed() ) {
+					if ( selState == BESS_Selected && selectedColumn == column ) {
+						printf("focus unselect\n");
+						selState = BESS_NotSelected;
+						selectedColumn = -1;
+					} else {
+						printf("focus select\n");
+						selState = BESS_Selected;
+						selectedColumn = column;
+					}
+				} else if ( IsBindNowKeyPressed() ) {
+					printf("focus bind now\n");
+					selState = BESS_WantBind;
+					selectedColumn = column;
+				} else if ( IsClearKeyPressed() ) {
+					printf("focus clear now\n");
+					selState = BESS_WantClear;
 					selectedColumn = column;
 				}
-			} else if ( IsBindNowKeyPressed() ) {
-				printf("focus bind now\n");
-				selState = BESS_WantBind;
-				selectedColumn = column;
-			} else if ( IsClearKeyPressed() ) {
-				printf("focus clear now\n");
-				selState = BESS_WantClear;
-				selectedColumn = column;
+			}
+
+			if ( ImGui::IsItemHovered() ) {
+				if ( column == 0 ) {
+					// if the first column (action name, like "Move Left") is hovered, highlight the whole row
+					// A normal Selectable would use ImGuiCol_HeaderHovered, but I use that as the "selected"
+					// color (in Draw()), so use the next brighter thing (ImGuiCol_HeaderActive) here.
+					ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive) );
+					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, highlightRowColor );
+				}
+
+				bool doubleClicked = ImGui::IsMouseDoubleClicked( 0 );
+				bool singleClicked = !doubleClicked && ImGui::IsMouseClicked( 0 );
+
+				if ( singleClicked ) {
+					if ( selState == BESS_Selected && selectedColumn == column ) {
+						printf("hover unselect\n");
+						selState = BESS_NotSelected;
+						selectedColumn = -1;
+					} else {
+						printf("hover select\n");
+						selState = BESS_Selected;
+						selectedColumn = column;
+					}
+				} else if ( doubleClicked ) {
+					printf("hover doubleclick\n");
+					selState = BESS_WantBind;
+					selectedColumn = column;
+				}
 			}
 		}
 
-		if ( ImGui::IsItemHovered() ) {
+		// this column is selected => highlight it
+		if ( selState != BESS_NotSelected && selectedColumn == column ) {
+			// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
+			// but ImGuiCol_HeaderHovered is more visible, IMO
+			ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
+			ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
+
 			if ( column == 0 ) {
-				// if the first column (action name, like "Move Left") is hovered, highlight the whole row
-				// A normal Selectable would use ImGuiCol_HeaderHovered, but I use that as the "selected"
-				// color (in Draw()), so use the next brighter thing (ImGuiCol_HeaderActive) here.
-				ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive) );
+				// the displayName column is selected => highlight the whole row
 				ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, highlightRowColor );
+				// (yes, still set the highlight color for ImGuiTableBgTarget_CellBg above for extra
+				//  highlighting of the column 0 cell, otherwise it'd look darker due to displayNameBGColor)
 			}
 
-			bool doubleClicked = ImGui::IsMouseDoubleClicked( 0 );
-			bool singleClicked = !doubleClicked && ImGui::IsMouseClicked( 0 );
-
-			if ( singleClicked ) {
-				if ( selState == BESS_Selected && selectedColumn == column ) {
-					printf("hover unselect\n");
-					selState = BESS_NotSelected;
-					selectedColumn = -1;
-				} else {
-					printf("hover select\n");
-					selState = BESS_Selected;
-					selectedColumn = column;
-				}
-			} else if ( doubleClicked ) {
-				printf("hover doubleclick\n");
-				selState = BESS_WantBind;
-				selectedColumn = column;
-			}
 		}
 	}
 
@@ -230,27 +251,12 @@ struct BindingEntry {
 			ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, displayNameBGColor );
 
 			BindingEntrySelectionState newSelState = oldSelState;
-			// if currently a popup is shown for creating a new binding or clearing one,
-			// everything is still rendered, but in a disabled (greyed out) state
-			// and shouldn't handle any input
-			bool ignoreInput = (oldSelState > BESS_Selected);
 
 			// not really using the selectable feature, mostly making it selectable
 			// so keyboard/gamepad navigation works
 			ImGui::Selectable( "##0", false, 0 );
 
-			if ( !ignoreInput ) {
-				UpdateSelectionState( 0, newSelState );
-			}
-			// the displayName column is selected => highlight the whole row
-			if ( newSelState != BESS_NotSelected && selectedColumn == 0 ) {
-				// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
-				// but ImGuiCol_HeaderHovered is more visible, IMO
-				ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
-				ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, highlightRowColor );
-				// extra highlighting for this the column 0 cell (otherwise it'd look darker due to displayNameBGColor)
-				ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
-			}
+			UpdateSelectionState( 0, newSelState );
 
 			ImGui::SameLine();
 			ImGui::TextUnformatted( displayName );
@@ -267,21 +273,13 @@ struct BindingEntry {
 				char selID[5];
 				snprintf( selID, sizeof(selID), "##%d", col );
 				ImGui::Selectable( selID, false, 0 );
-				if ( !ignoreInput ) {
-					UpdateSelectionState( col, newSelState );
-				}
-				// this column is selected => highlight it
-				if ( newSelState != BESS_NotSelected && selectedColumn == col ) {
-					// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
-					// but ImGuiCol_HeaderHovered is more visible, IMO
-					ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
-					ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
-				}
-
+				UpdateSelectionState( col, newSelState );
 				ImGui::SameLine();
+
 				// TODO: actual binding
 				ImGui::Text( "binding %d", col );
 			}
+			// TODO: additional column with a [...] button or similar if there are even more bindings?
 
 			ImGui::PopID();
 
@@ -323,28 +321,6 @@ static void DrawBindingsMenu()
 
 	static int selectedRow = -1;
 	static BindingEntrySelectionState selectionState = BESS_NotSelected;
-	static bool popupOpened = false;
-	if ( selectionState > BESS_Selected ) { // WantBind or WantClear => show a popup
-		const char* popupName = "Bind or Clear TODO";
-		if ( !popupOpened ) {
-			ImGui::OpenPopup( popupName );
-			popupOpened = true;
-		}
-
-		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f) );
-
-		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
-		{
-			ImGui::Text("Bind or Clear or whatever?");
-			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
-				ImGui::CloseCurrentPopup();
-				selectionState = BESS_Selected;
-				popupOpened = false;
-			}
-			ImGui::EndPopup();
-		}
-	}
 
 	ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
 	// inTable: are we currently adding elements to a table of bindings?
@@ -395,6 +371,30 @@ static void DrawBindingsMenu()
 	if ( inTable && lastBeginTable ) {
 		// end the last binding table, if any
 		ImGui::EndTable();
+	}
+
+	// WantBind or WantClear => show a popup
+	if ( selectionState > BESS_Selected ) {
+		const char* popupName = "Bind or Clear TODO";
+		static bool popupOpened = false;
+		if ( !popupOpened ) {
+			ImGui::OpenPopup( popupName );
+			popupOpened = true;
+		}
+
+		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f) );
+
+		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			ImGui::Text("Bind or Clear or whatever?");
+			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
+				ImGui::CloseCurrentPopup();
+				selectionState = BESS_Selected;
+				popupOpened = false;
+			}
+			ImGui::EndPopup();
+		}
 	}
 }
 
