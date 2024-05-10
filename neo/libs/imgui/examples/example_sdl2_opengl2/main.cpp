@@ -67,7 +67,7 @@ idStr idStr::VFormat( const char* format, va_list argptr )
 
 	len = vsnprintf( buffer, sizeof(buffer), format, argptr );
 
-	if ( len < sizeof(buffer) ) {
+	if ( len < (int)sizeof(buffer) ) {
 		ret = buffer;
 	} else {
 		// string was truncated, because buffer wasn't big enough.
@@ -136,13 +136,10 @@ static void ShowWarningTooltip( const char* text )
 }
 
 
-
-static int IsKeyPressed( ImGuiKey key ) {
+static bool IsKeyPressed( ImGuiKey key ) {
 	return ImGui::IsKeyPressed( key, false );
 }
 
-	// by default enter and space both select a cell (when using cursor keys for navigation)
-	// => could use only space for select, and enter for "set binding"?
 	// ImGuiKey_Enter, ImGuiKey_KeypadEnter (activate binding mode for selected entry, like double-click)
 	// ImGuiKey_Escape (cancel binding mode or unselect if not in binding mode)
 	// ImGuiKey_Backspace, ImGuiKey_Delete, (delete currently selected binding(s))
@@ -151,7 +148,9 @@ static int IsKeyPressed( ImGuiKey key ) {
 	//   in idUserInterfaceLocal::HandleEvent() we treat left trigger as Enter
 	//  but what gamepad button to use for select?
 	//   - maybe ImGuiKey_GamepadFaceUp for enter and facedown for select?
-	// ImGui::IsKeyPressed(key, false);
+	//   - I think we don't really need select, just bind and clear and cancel
+	//     => maybe faceup for clear, facedown for bind (enter) and Start for cancel 
+	//       (possibly also faceright for cancel, unless in binding mode where one might want to bind it)
 
 static bool IsSelectionKeyPressed() {
 	return IsKeyPressed( ImGuiKey_Space ); // TODO: any gamepad button?
@@ -171,9 +170,20 @@ static bool IsCancelKeyPressed() {
 	return IsKeyPressed( ImGuiKey_Escape ) || IsKeyPressed( ImGuiKey_GamepadStart );
 }
 
-static bool IsUnselectKeyPressed() {
-	// xbox B is probably suitable for unsetting selection - TODO: OTOH, does selection even make sense with gamepad? isn't the implicit focus enough?
-	return IsCancelKeyPressed() || IsKeyPressed( ImGuiKey_GamepadFaceRight );
+const char* GetKeyName( int keyNum, bool localized = true )
+{
+	if( keyNum <= 0 )
+		return "<none>";
+	// TODO: use idKeyInput::KeyNumToString(keyNum, localized) instead
+	if ( localized ) {
+		return ImGui::GetKeyName( (ImGuiKey)keyNum );
+	} else {
+		// pprepend _int_ so I can tell internal and localized name apart
+		// just a dummy, in Doom3 use idKeyInput::KeyNumToString(keyNum, false)
+		static char locKeyName[128];
+		snprintf(locKeyName, sizeof(locKeyName), "_int_%s", ImGui::GetKeyName( (ImGuiKey)keyNum ) );
+		return locKeyName;
+	}
 }
 
 // background color for the first column of the binding table, that contains the name of the command
@@ -195,9 +205,8 @@ struct BoundKey {
 	void Set( int _keyNum )
 	{
 		keyNum = _keyNum;
-		keyName = ImGui::GetKeyName( (ImGuiKey)_keyNum ); // TODO: use idKeyInput::KeyNumToString(keyNum, true) instead!
-		internalKeyName = "_int_";
-		internalKeyName += keyName; // TODO: use idKeyInput::KeyNumToString(keyNum, false) instead!
+		keyName = GetKeyName( _keyNum );
+		internalKeyName = GetKeyName( _keyNum, false );
 	}
 
 	BoundKey() = default;
@@ -428,15 +437,13 @@ struct BindingEntry {
 
 		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
 		{
-			idStr popupText;
 			if ( selectedColumn == 0 ) {
-				popupText = idStr::Format( "Clear all keybindings for %s ?", displayName.c_str() );
+				ImGui::Text( "Clear all keybindings for %s ?", displayName.c_str() );
 			} else {
-				popupText = idStr::Format( "Unbind key '%s' from command %s ?",
-				                           bindings[selectedBinding].keyName.c_str(), displayName.c_str() );
+				ImGui::Text( "Unbind key '%s' from command %s ?",
+				             bindings[selectedBinding].keyName.c_str(), displayName.c_str() );
 			}
 
-			ImGui::TextUnformatted( popupText );
 			ImGui::NewLine();
 			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
 			ImGui::NewLine();
@@ -556,17 +563,15 @@ struct BindingEntry {
 
 		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
 		{
-			idStr popupText;
 			if ( selectedColumn == 0 || (size_t)selectedBinding >= bindings.size() || bindings[selectedBinding].keyNum == -1 ) {
 				// add a binding
-				popupText = idStr::Format( "Press a key or button to bind to %s", displayName.c_str() );
+				ImGui::Text( "Press a key or button to bind to %s", displayName.c_str() );
 			} else {
 				// overwrite a binding
-				popupText = idStr::Format( "Press a key or button to replace '%s' binding to %s",
-				                           bindings[selectedBinding].keyName.c_str(), displayName.c_str() );
+				ImGui::Text( "Press a key or button to replace '%s' binding to %s",
+				              bindings[selectedBinding].keyName.c_str(), displayName.c_str() );
 			}
 
-			ImGui::TextUnformatted( popupText );
 			ImGui::NewLine();
 			ImGui::TextUnformatted( "To bind a mouse button, click it in the following field" );
 
@@ -593,7 +598,9 @@ struct BindingEntry {
 				// find out if any key is pressed and bind that (except for Esc which can't be
 				// bound and is already handled though IsCancelKeyPressed() above)
 				// (but don't run this when the popup has just been opened, because then
-				//  the key that opened this, likely Enter, is still pressed)
+				//  the key that opened this, likely Enter, is still registered as pressed)
+
+				// TODO: use Doom3's mechanism to figure out what D3 key is pressed
 				ImGuiKey pressedKey = ImGuiKey_None;
 				for ( int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k ) {
 					ImGuiKey key = (ImGuiKey)k;
@@ -616,7 +623,7 @@ struct BindingEntry {
 						ret = BESS_Selected;
 					} else if ( oldBE == this ) {
 						// that key is already bound to this command, show warning, otherwise do nothing
-						const char* keyName = ImGui::GetKeyName( pressedKey ); // TODO: get from dhewm3 instead
+						const char* keyName = GetKeyName( pressedKey );
 						idStr warning = idStr::Format( "Key '%s' is already bound to this command (%s)!",
 						                               keyName, displayName.c_str() );
 						ShowWarningTooltip( warning );
@@ -642,11 +649,10 @@ struct BindingEntry {
 	BindingEntrySelectionState HandleRebindPopup( const char* popupName )
 	{
 		BindingEntrySelectionState ret = BESS_WantRebind;
-		int selectedBinding = selectedColumn - 1;
 
 		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
 		{
-			const char* keyName = ImGui::GetKeyName( (ImGuiKey)rebindKeyNum );
+			const char* keyName = GetKeyName( rebindKeyNum );
 
 			ImGui::Text( "Key '%s' is already bound to command %s !\nBind to %s instead?",
 			             keyName, rebindOtherEntry->displayName.c_str(), displayName.c_str() );
