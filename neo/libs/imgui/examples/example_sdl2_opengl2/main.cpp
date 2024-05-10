@@ -148,11 +148,14 @@ enum BindingEntrySelectionState {
 struct BoundKey {
 	int keyNum = -1;
 	idStr keyName;
+	idStr internalKeyName; // the one used in bind commands in the D3 console and config
 
 	void Set( int _keyNum )
 	{
 		keyNum = _keyNum;
-		keyName = ImGui::GetKeyName( (ImGuiKey)_keyNum ); // TODO: use idKeyInput::KeyNumToString() instead!
+		keyName = ImGui::GetKeyName( (ImGuiKey)_keyNum ); // TODO: use idKeyInput::KeyNumToString(keyNum, true) instead!
+		internalKeyName = "_int_";
+		internalKeyName += keyName; // TODO: use idKeyInput::KeyNumToString(keyNum, false) instead!
 	}
 
 	BoundKey() = default;
@@ -334,14 +337,19 @@ struct BindingEntry {
 			for ( int col=1; col <= numBindings ; ++col ) {
 				ImGui::TableSetColumnIndex( col );
 
+				bool colHasBinding = ((size_t)col <= bindings.size()) && bindings[col-1].keyNum != -1;
 				char selTxt[128];
-				if ( (size_t)col <= bindings.size() ) {
+				if ( colHasBinding ) {
 					snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[col-1].keyName.c_str(), col );
 				} else {
 					snprintf( selTxt, sizeof(selTxt), "###%d", col );
 				}
 				ImGui::Selectable( selTxt, false, 0 );
 				UpdateSelectionState( col, newSelState );
+
+				if ( colHasBinding ) {
+					AddTooltip( bindings[col-1].internalKeyName.c_str() );
+				}
 			}
 			// TODO: additional column with a [...] button or similar if there are even more bindings?
 
@@ -355,12 +363,14 @@ struct BindingEntry {
 		return BESS_NotSelected;
 	}
 
-	void Bind(int keyNum) {
-		printf( "bind key %d to %s (%s)\n", keyNum, command.c_str(), displayName.c_str() );
-		// TODO: actual Doom3 bind implementation!
+	void Bind( int keyNum ) {
+		if ( keyNum >= 0 ) {
+			printf( "bind key %d to %s (%s)\n", keyNum, command.c_str(), displayName.c_str() );
+			// TODO: actual Doom3 bind implementation!
+		}
 	}
 
-	void Unbind(int keyNum) {
+	void Unbind( int keyNum ) {
 		if ( keyNum >= 0 ) {
 			printf( "unbind key %d from %s (%s)\n", keyNum, command.c_str(), displayName.c_str() );
 			// TODO: actual Doom3 unbind implementation!
@@ -396,20 +406,15 @@ struct BindingEntry {
 			float buttonOffset = (ImGui::GetWindowWidth() - 260.0f) * 0.5f;
 			ImGui::SetCursorPosX( buttonOffset );
 
-			if ( !ImGui::IsWindowFocused() ) {
-				ImGui::TextUnformatted( ".. not focused ..\n" );
-				printf(".. not focused ..\n" );
-			} else {
-				ImGui::TextUnformatted( ".. is focused ..\n" );
-			}
-
+			bool confirmedByKey = false;
 			if ( !ImGui::IsAnyItemFocused() ) {
-				ImGui::SetKeyboardFocusHere();
-			} else {
-				ImGui::TextUnformatted( "and some item is focused ..\n" );
+				// if no item is focused (=> not using keyboard or gamepad navigation to select
+				//  [Ok] or [Cancel] button), check if Enter has been pressed to confirm deletion
+				// (otherwise, enter can be used to chose the selected button)
+				confirmedByKey = IsBindNowKeyPressed();
 			}
 
-			if ( ImGui::Button( "Ok", ImVec2(120, 0) ) ) {
+			if ( ImGui::Button( "Ok", ImVec2(120, 0) ) || confirmedByKey ) {
 				if ( selectedColumn == 0 ) {
 					for ( BoundKey& bk : bindings ) {
 						Unbind( bk.keyNum );
@@ -425,7 +430,7 @@ struct BindingEntry {
 				ImGui::CloseCurrentPopup();
 				closePopup = true;
 			}
-			//ImGui::SetItemDefaultFocus();
+			ImGui::SetItemDefaultFocus();
 
 			ImGui::SameLine( 0.0f, 20.0f );
 			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
@@ -526,8 +531,6 @@ struct BindingEntry {
 			float buttonOffset = (windowWidth - 120.0f) * 0.5f;
 			ImGui::SetCursorPosX( buttonOffset );
 
-			//ImGui::SetWindowFocus();
-			
 			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
 				ImGui::CloseCurrentPopup();
 				closePopup = true;
@@ -536,7 +539,7 @@ struct BindingEntry {
 				// find out if any key is pressed and bind that (except for Esc which can't be
 				// bound and is already handled though IsCancelKeyPressed() above)
 				// (but don't run this when the popup has just been opened, because then
-				//  the key that opened this, likely enter, is still pressed)
+				//  the key that opened this, likely Enter, is still pressed)
 				ImGuiKey pressedKey = ImGuiKey_None;
 				for ( int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k ) {
 					ImGuiKey key = (ImGuiKey)k;
@@ -550,7 +553,7 @@ struct BindingEntry {
 						break;
 					}
 				}
-				
+
 				if ( pressedKey != ImGuiKey_None ) {
 					const BindingEntry* oldBE = FindBindingEntryForKey( pressedKey );
 					if ( oldBE == nullptr ) {
@@ -562,6 +565,7 @@ struct BindingEntry {
 						warning += displayName;
 						warning += ")!";
 						ShowWarningTooltip( warning );
+						// TODO: select column with that specific binding?
 					} else {
 						ShowWarningTooltip( "TODO Key is already bound to another command" );
 						// TODO: open confirmation popup -_-
@@ -599,7 +603,8 @@ struct BindingEntry {
 		bool firstOpen = false;
 		if ( !popupOpened ) {
 			ImGui::OpenPopup( popupName );
-			popupOpened = firstOpen = true;
+			popupOpened = true;
+			firstOpen = true;
 		}
 		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
 		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f) );
