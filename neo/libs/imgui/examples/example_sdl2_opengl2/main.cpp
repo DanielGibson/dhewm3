@@ -19,6 +19,7 @@
 #include <SDL_opengl.h>
 
 #include <string>
+#include <vector>
 
 // emulate idStr..
 class idStr : public std::string {
@@ -66,6 +67,34 @@ static void AddDescrTooltip( const char* description )
 		AddTooltip( description );
 	}
 }
+
+static idStr warningTooltipText;
+static double warningTooltipStartTime = -100.0;
+
+static void UpdateWarningTooltip()
+{
+	double timeNow = ImGui::GetTime();
+	if ( timeNow - warningTooltipStartTime > 4.0f ) {
+		return;
+	}
+	// TODO: also hide if a key was pressed or maybe even if the mouse was moved (too much)?
+
+	ImGui::BeginTooltip();
+	// TODO: warning icon
+
+	ImGui::TextUnformatted( warningTooltipText.c_str() );
+	ImGui::EndTooltip();
+}
+
+static void ShowWarningTooltip( const char* text )
+{
+	warningTooltipText = "!! ";
+	warningTooltipText += text;
+	warningTooltipStartTime = ImGui::GetTime();
+	printf("warning: %s\n", text);
+}
+
+
 
 static int IsKeyPressed( ImGuiKey key ) {
 	return ImGui::IsKeyPressed( key, false );
@@ -116,12 +145,34 @@ enum BindingEntrySelectionState {
 	BESS_WantClear
 };
 
+struct BoundKey {
+	int keyNum = -1;
+	idStr keyName;
+
+	void Set( int _keyNum )
+	{
+		keyNum = _keyNum;
+		keyName = ImGui::GetKeyName( (ImGuiKey)_keyNum ); // TODO: use idKeyInput::KeyNumToString() instead!
+	}
+
+	BoundKey() = default;
+
+	BoundKey ( int _keyNum ) {
+		Set( _keyNum );
+	}
+	
+};
+
+struct BindingEntry;
+static const BindingEntry* FindBindingEntryForKey( int keyNum );
+static int numBindingColumns = 4; // TODO: in real code, save in CVar (in_maxBindingsPerCommand or sth)
+
 struct BindingEntry {
 	idStr command; // "_impulse3" or "_forward" or similar - or "" for heading entry
 	idStr displayName;
 	const char* description = nullptr;
+	std::vector<BoundKey> bindings;
 	int selectedColumn = -1;
-	// TODO: actual bindings?
 
 	BindingEntry() = default;
 
@@ -129,6 +180,9 @@ struct BindingEntry {
 
 	BindingEntry( const char* _command, const char* _displayName, const char* descr = nullptr )
 	: command( _command ), displayName( _displayName ), description( descr ) {}
+
+	BindingEntry( const char* _command, const char* _displayName, const char* descr, std::initializer_list<BoundKey> boundKeys )
+	: command( _command ), displayName( _displayName ), description( descr ), bindings( boundKeys ) {}
 
 #if 0
 	BindingEntry( const idStr& _command, const idStr& _displayName, const char* descr = nullptr )
@@ -182,7 +236,18 @@ struct BindingEntry {
 					selectedColumn = column;
 				} else if ( IsClearKeyPressed() ) {
 					printf("focus clear now\n");
-					selState = BESS_WantClear;
+					bool nothingToClear = false;
+					if ( column == 0 ) {
+						if ( bindings.size() == 0 ) {
+							ShowWarningTooltip( "No keys are bound to this action, so there's nothing to unbind" );
+							nothingToClear = true;
+						}
+					} else if ( (size_t)column > bindings.size() || bindings[column-1].keyNum == -1 ) {
+						ShowWarningTooltip( "No bound key selected for unbind" );
+						nothingToClear = true;
+					}
+
+					selState = nothingToClear ? BESS_Selected : BESS_WantClear;
 					selectedColumn = column;
 				}
 			}
@@ -230,7 +295,6 @@ struct BindingEntry {
 				// (yes, still set the highlight color for ImGuiTableBgTarget_CellBg above for extra
 				//  highlighting of the column 0 cell, otherwise it'd look darker due to displayNameBGColor)
 			}
-
 		}
 	}
 
@@ -270,14 +334,14 @@ struct BindingEntry {
 			for ( int col=1; col <= numBindings ; ++col ) {
 				ImGui::TableSetColumnIndex( col );
 
-				char selID[5];
-				snprintf( selID, sizeof(selID), "##%d", col );
-				ImGui::Selectable( selID, false, 0 );
+				char selTxt[128];
+				if ( (size_t)col <= bindings.size() ) {
+					snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[col-1].keyName.c_str(), col );
+				} else {
+					snprintf( selTxt, sizeof(selTxt), "###%d", col );
+				}
+				ImGui::Selectable( selTxt, false, 0 );
 				UpdateSelectionState( col, newSelState );
-				ImGui::SameLine();
-
-				// TODO: actual binding
-				ImGui::Text( "binding %d", col );
 			}
 			// TODO: additional column with a [...] button or similar if there are even more bindings?
 
@@ -290,11 +354,272 @@ struct BindingEntry {
 		}
 		return BESS_NotSelected;
 	}
+
+	void Bind(int keyNum) {
+		printf( "bind key %d to %s (%s)\n", keyNum, command.c_str(), displayName.c_str() );
+		// TODO: actual Doom3 bind implementation!
+	}
+
+	void Unbind(int keyNum) {
+		if ( keyNum >= 0 ) {
+			printf( "unbind key %d from %s (%s)\n", keyNum, command.c_str(), displayName.c_str() );
+			// TODO: actual Doom3 unbind implementation!
+		}
+	}
+
+	bool HandleClearPopup( const char* popupName )
+	{
+		bool closePopup = false;
+		int selectedBinding = selectedColumn - 1;
+
+		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			idStr popupText;
+			if ( selectedColumn == 0 ) {
+				popupText = "Clear all keybindings for ";
+				popupText += displayName;
+				popupText += " ?";
+			} else {
+				popupText = "Unbind key '";
+				popupText += bindings[selectedBinding].keyName;
+				popupText += "' from action ";
+				popupText += displayName;
+				popupText += " ?";
+			}
+
+			ImGui::TextUnformatted( popupText );
+			ImGui::NewLine();
+			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
+			ImGui::NewLine();
+
+			// center the Ok and Cancel buttons; 260 = 2*120 (button width) + 20 (space added between them)
+			float buttonOffset = (ImGui::GetWindowWidth() - 260.0f) * 0.5f;
+			ImGui::SetCursorPosX( buttonOffset );
+
+			if ( !ImGui::IsWindowFocused() ) {
+				ImGui::TextUnformatted( ".. not focused ..\n" );
+				printf(".. not focused ..\n" );
+			} else {
+				ImGui::TextUnformatted( ".. is focused ..\n" );
+			}
+
+			if ( !ImGui::IsAnyItemFocused() ) {
+				ImGui::SetKeyboardFocusHere();
+			} else {
+				ImGui::TextUnformatted( "and some item is focused ..\n" );
+			}
+
+			if ( ImGui::Button( "Ok", ImVec2(120, 0) ) ) {
+				if ( selectedColumn == 0 ) {
+					for ( BoundKey& bk : bindings ) {
+						Unbind( bk.keyNum );
+					}
+					bindings.clear();
+				} else {
+					Unbind( bindings[selectedBinding].keyNum );
+
+					bindings[selectedBinding].keyNum = -1;
+					bindings[selectedBinding].keyName = "";
+				}
+
+				ImGui::CloseCurrentPopup();
+				closePopup = true;
+			}
+			//ImGui::SetItemDefaultFocus();
+
+			ImGui::SameLine( 0.0f, 20.0f );
+			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
+				ImGui::CloseCurrentPopup();
+				closePopup = true;
+			}
+
+			ImGui::EndPopup();
+		}
+
+		return closePopup;
+	}
+
+
+	void AddKeyBinding( int keyNum )
+	{
+		Bind( keyNum );
+
+		int numBindings = bindings.size();
+		if ( selectedColumn == 0 ) {
+			for ( int i=0; i < numBindings; ++i ) {
+				// if there's an empty column, use that
+				if ( bindings[i].keyNum == -1 ) {
+					bindings[i].Set( keyNum );
+					// select the column this was inserted into
+					// (+1 because of the first column with displayName)
+					selectedColumn = i + 1;
+					return;
+				}
+			}
+			if ( numBindings < numBindingColumns ) {
+				bindings.push_back( BoundKey(keyNum) );
+				selectedColumn = numBindings + 1;
+			} else {
+				// insert in last column (but don't remove any elements from bindings!)
+				auto it = bindings.cbegin(); // I fucking hate STL.
+				it += (numBindingColumns-1);
+				bindings.insert( it, BoundKey(keyNum) );
+				selectedColumn = numBindingColumns;
+			}
+		} else {
+			int selectedBinding = selectedColumn - 1;
+			assert( selectedBinding >= 0 );
+			if ( selectedBinding < numBindings ) {
+				Unbind( bindings[selectedBinding].keyNum );
+				bindings[selectedBinding].Set( keyNum );
+			} else  {
+				if ( selectedBinding > numBindings ) {
+					// apparently a column with other unset columns before it was selected
+					// => add enough empty columns
+					bindings.resize( selectedBinding );
+				}
+				bindings.push_back( BoundKey(keyNum) );
+			}
+		}
+	}
+
+	bool HandleBindPopup( const char* popupName, bool firstOpen )
+	{
+		bool closePopup = false;
+		int selectedBinding = selectedColumn - 1;
+
+		ImGuiIO& io = ImGui::GetIO();
+		// disable keyboard and gamepad input while the bind popup is open
+		io.ConfigFlags &= ~(ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
+
+		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			idStr popupText;
+			if ( selectedColumn == 0 || (size_t)selectedBinding >= bindings.size() || bindings[selectedBinding].keyNum == -1 ) {
+				// add a binding
+				popupText = "Press a key or button to bind to ";
+				popupText += displayName;
+			} else {
+				// overwrite a binding
+				popupText = "Press a key or button to replace '";
+				popupText += bindings[selectedBinding].keyName;
+				popupText += "' binding of ";
+				popupText += displayName;
+			}
+
+			ImGui::TextUnformatted( popupText );
+			ImGui::NewLine();
+			ImGui::TextUnformatted( "To bind a mouse button, click it in the following field" );
+
+			const float windowWidth = ImGui::GetWindowWidth();
+			ImVec2 clickFieldSize( windowWidth * 0.8f, ImGui::GetTextLineHeightWithSpacing() * 4.0f );
+			ImGui::SetCursorPosX( windowWidth * 0.1f );
+
+			ImGui::Button( "###clickField", clickFieldSize );
+			bool clickFieldHovered = ImGui::IsItemHovered();
+
+			ImGui::NewLine();
+			ImGui::TextUnformatted( "... or press Escape to cancel." );
+
+			ImGui::NewLine();
+			// center the Cancel button; 120 is the button width
+			float buttonOffset = (windowWidth - 120.0f) * 0.5f;
+			ImGui::SetCursorPosX( buttonOffset );
+
+			//ImGui::SetWindowFocus();
+			
+			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
+				ImGui::CloseCurrentPopup();
+				closePopup = true;
+				io.ConfigFlags |= (ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
+			} else if ( !firstOpen ) {
+				// find out if any key is pressed and bind that (except for Esc which can't be
+				// bound and is already handled though IsCancelKeyPressed() above)
+				// (but don't run this when the popup has just been opened, because then
+				//  the key that opened this, likely enter, is still pressed)
+				ImGuiKey pressedKey = ImGuiKey_None;
+				for ( int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k ) {
+					ImGuiKey key = (ImGuiKey)k;
+					if ( key >= ImGuiKey_MouseLeft && key <= ImGuiKey_MouseMiddle && !clickFieldHovered ) {
+						// ignore mouse buttons, unless they clicked the clickField
+						continue;
+					}
+
+					if ( IsKeyPressed( key ) ) {
+						pressedKey = key;
+						break;
+					}
+				}
+				
+				if ( pressedKey != ImGuiKey_None ) {
+					const BindingEntry* oldBE = FindBindingEntryForKey( pressedKey );
+					if ( oldBE == nullptr ) {
+						AddKeyBinding( pressedKey );
+					} else if ( oldBE == this ) {
+						idStr warning = "Key '";
+						warning += ImGui::GetKeyName( pressedKey );
+						warning += "' is already bound to this command (";
+						warning += displayName;
+						warning += ")!";
+						ShowWarningTooltip( warning );
+					} else {
+						ShowWarningTooltip( "TODO Key is already bound to another command" );
+						// TODO: open confirmation popup -_-
+					}
+					ImGui::CloseCurrentPopup();
+					closePopup = true;
+					io.ConfigFlags |= (ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
+				}
+			}
+			ImGui::EndPopup();
+		}
+
+		return closePopup;
+	}
+
+	void HandlePopup( BindingEntrySelectionState& selectionState )
+	{
+		assert(selectedColumn >= 0);
+		const char* popupName = nullptr;
+
+		if ( selectionState == BESS_WantClear ) {
+			if ( bindings.size() == 0 || (size_t)selectedColumn > bindings.size() ||  bindings[selectedColumn-1].keyNum == -1 ) {
+				// there are no bindings at all for this action, or at least not in the selected column
+				// => don't show popup, but keep the cell selected
+				selectionState = BESS_Selected;
+				return;
+			}
+			popupName = (selectedColumn == 0) ? "Unbind keys" : "Unbind key";
+		} else {
+			assert( selectionState == BESS_WantBind );
+			popupName = "Bind key";
+		}
+
+		static bool popupOpened = false;
+		bool firstOpen = false;
+		if ( !popupOpened ) {
+			ImGui::OpenPopup( popupName );
+			popupOpened = firstOpen = true;
+		}
+		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f) );
+
+		bool closePopup = false;
+		if ( selectionState == BESS_WantClear ) {
+			closePopup = HandleClearPopup( popupName );
+		} else {
+			closePopup = HandleBindPopup( popupName, firstOpen );
+		}
+		if ( closePopup ) {
+			selectionState = BESS_Selected;
+			popupOpened = false;
+		}
+	}
 };
 
 static BindingEntry bindingEntries[] = {
 	{ "", "Move / Look", nullptr },
-	{ "_forward",       "Forward"    , nullptr },
+	{ "_forward",       "Forward"    , nullptr, { ImGuiKey_W, ImGuiKey_GamepadLStickUp } },
 	{ "_back",          "Backpedal"  , "walk back" },
 	{ "_moveLeft",      "Move Left"  , "strafe left" },
 	{ "_moveRight",     "Move Right" , nullptr },
@@ -303,12 +628,24 @@ static BindingEntry bindingEntries[] = {
 	{ "_impulse1",      "Pistol",  nullptr },
 };
 
+// return NULL if not currently bound to anything
+static const BindingEntry* FindBindingEntryForKey( int keyNum )
+{
+	for ( const BindingEntry& be : bindingEntries ) {
+		for ( const BoundKey& bk : be.bindings ) {
+			if ( bk.keyNum == keyNum ) {
+				return &be;
+			}
+		}
+	}
+	return nullptr;
+}
+
 static void DrawBindingsMenu()
 {
 	ImGui::PushItemWidth(70.0f); // TODO: somehow dependent on font size and/or scale or something
-	static int numBindings = 4; // TODO: in real code, save in CVar (in_maxBindingsPerCommand or sth)
-	ImGui::InputInt( "Number of Binding columns to show", &numBindings );
-	numBindings = idMath::ClampInt( 1, 10, numBindings );
+	ImGui::InputInt( "Number of Binding columns to show", &numBindingColumns );
+	numBindingColumns = idMath::ClampInt( 1, 10, numBindingColumns );
 	ImGui::PopItemWidth();
 
 	{
@@ -322,6 +659,9 @@ static void DrawBindingsMenu()
 	static int selectedRow = -1;
 	static BindingEntrySelectionState selectionState = BESS_NotSelected;
 
+	// make the key column entries in the bindings table center-aligned instead of left-aligned
+	ImGui::PushStyleVar( ImGuiStyleVar_SelectableTextAlign, ImVec2(0.5f, 0.0f) );
+
 	ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
 	// inTable: are we currently adding elements to a table of bindings?
 	//  (we're not when adding a heading from bindingEntries: existing tables are ended
@@ -331,7 +671,8 @@ static void DrawBindingsMenu()
 	// (init to true so the first heading before any bindings is shown)
 	bool lastBeginTable = true;
 	int tableNum = 1;
-	for ( int i=0; i < IM_ARRAYSIZE(bindingEntries); ++i ) {
+	const int numBindingEntries = IM_ARRAYSIZE(bindingEntries);
+	for ( int i=0; i < numBindingEntries; ++i ) {
 		BindingEntry& be = bindingEntries[i];
 		bool isHeading = be.IsHeading();
 		if ( !isHeading && !inTable ) {
@@ -341,7 +682,7 @@ static void DrawBindingsMenu()
 			inTable = true;
 			char tableID[10];
 			snprintf( tableID, sizeof(tableID), "bindTab%d", tableNum++ );
-			lastBeginTable = ImGui::BeginTable( tableID, numBindings+1, tableFlags );
+			lastBeginTable = ImGui::BeginTable( tableID, numBindingColumns+1, tableFlags );
 			if ( lastBeginTable ) {
 				ImGui::TableSetupScrollFreeze(1, 0);
 				const float actionColumnWidth = 100.0f; // TODO: set sensible value, depending on font size/scale
@@ -358,7 +699,7 @@ static void DrawBindingsMenu()
 
 		if ( lastBeginTable ) { // if ImGui::BeginTable() returned false, don't draw its elements
 			BindingEntrySelectionState bess = (selectedRow == i) ? selectionState : BESS_NotSelected;
-			bess = be.Draw(numBindings, bess);
+			bess = be.Draw(numBindingColumns, bess);
 			if ( bess != BESS_NotSelected ) {
 				selectedRow = i;
 				selectionState = bess;
@@ -373,28 +714,12 @@ static void DrawBindingsMenu()
 		ImGui::EndTable();
 	}
 
+	ImGui::PopStyleVar(); // ImGuiStyleVar_SelectableTextAlign
+
 	// WantBind or WantClear => show a popup
 	if ( selectionState > BESS_Selected ) {
-		const char* popupName = "Bind or Clear TODO";
-		static bool popupOpened = false;
-		if ( !popupOpened ) {
-			ImGui::OpenPopup( popupName );
-			popupOpened = true;
-		}
-
-		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f) );
-
-		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
-		{
-			ImGui::Text("Bind or Clear or whatever?");
-			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
-				ImGui::CloseCurrentPopup();
-				selectionState = BESS_Selected;
-				popupOpened = false;
-			}
-			ImGui::EndPopup();
-		}
+		assert(selectedRow >= 0 && selectedRow < numBindingEntries);
+		bindingEntries[selectedRow].HandlePopup( selectionState );
 	}
 }
 
@@ -408,6 +733,7 @@ static void myWindow()
 	ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 
 	DrawBindingsMenu();
+	UpdateWarningTooltip();
 
 
 
