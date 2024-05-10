@@ -176,7 +176,7 @@ static bool IsUnselectKeyPressed() {
 	return IsCancelKeyPressed() || IsKeyPressed( ImGuiKey_GamepadFaceRight );
 }
 
-// background color for the first column of the binding table, that contains the name of the action
+// background color for the first column of the binding table, that contains the name of the command
 static ImU32 displayNameBGColor = 0;
 
 enum BindingEntrySelectionState {
@@ -264,9 +264,8 @@ struct BindingEntry {
 		// and shouldn't handle any input
 		if ( selState < BESS_WantBind ) {
 			if ( ImGui::IsItemFocused() ) {
-				//printf("> %s col %d is focused\n", displayName.c_str(), column);
 				// Note: even when using the mouse, clicking a selectable will make it focused,
-				//       so it's possible to select an action (or specific binding of an action)
+				//       so it's possible to select a command (or specific binding of a command)
 				//       with the mouse and then press Enter to (re)bind it or Delete to clear it
 				if ( IsSelectionKeyPressed() ) {
 					if ( selState == BESS_Selected && selectedColumn == column ) {
@@ -287,7 +286,7 @@ struct BindingEntry {
 					bool nothingToClear = false;
 					if ( column == 0 ) {
 						if ( bindings.size() == 0 ) {
-							ShowWarningTooltip( "No keys are bound to this action, so there's nothing to unbind" );
+							ShowWarningTooltip( "No keys are bound to this command, so there's nothing to unbind" );
 							nothingToClear = true;
 						}
 					} else if ( (size_t)column > bindings.size() || bindings[column-1].keyNum == -1 ) {
@@ -302,7 +301,7 @@ struct BindingEntry {
 
 			if ( ImGui::IsItemHovered() ) {
 				if ( column == 0 ) {
-					// if the first column (action name, like "Move Left") is hovered, highlight the whole row
+					// if the first column (command name, like "Move Left") is hovered, highlight the whole row
 					// A normal Selectable would use ImGuiCol_HeaderHovered, but I use that as the "selected"
 					// color (in Draw()), so use the next brighter thing (ImGuiCol_HeaderActive) here.
 					ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive) );
@@ -431,15 +430,10 @@ struct BindingEntry {
 		{
 			idStr popupText;
 			if ( selectedColumn == 0 ) {
-				popupText = "Clear all keybindings for ";
-				popupText += displayName;
-				popupText += " ?";
+				popupText = idStr::Format( "Clear all keybindings for %s ?", displayName.c_str() );
 			} else {
-				popupText = "Unbind key '";
-				popupText += bindings[selectedBinding].keyName;
-				popupText += "' from action ";
-				popupText += displayName;
-				popupText += " ?";
+				popupText = idStr::Format( "Unbind key '%s' from command %s ?",
+				                           bindings[selectedBinding].keyName.c_str(), displayName.c_str() );
 			}
 
 			ImGui::TextUnformatted( popupText );
@@ -565,14 +559,11 @@ struct BindingEntry {
 			idStr popupText;
 			if ( selectedColumn == 0 || (size_t)selectedBinding >= bindings.size() || bindings[selectedBinding].keyNum == -1 ) {
 				// add a binding
-				popupText = "Press a key or button to bind to ";
-				popupText += displayName;
+				popupText = idStr::Format( "Press a key or button to bind to %s", displayName.c_str() );
 			} else {
 				// overwrite a binding
-				popupText = "Press a key or button to replace '";
-				popupText += bindings[selectedBinding].keyName;
-				popupText += "' binding of ";
-				popupText += displayName;
+				popupText = idStr::Format( "Press a key or button to replace '%s' binding to %s",
+				                           bindings[selectedBinding].keyName.c_str(), displayName.c_str() );
 			}
 
 			ImGui::TextUnformatted( popupText );
@@ -625,18 +616,14 @@ struct BindingEntry {
 						ret = BESS_Selected;
 					} else if ( oldBE == this ) {
 						// that key is already bound to this command, show warning, otherwise do nothing
-						idStr warning = "Key '";
-						warning += ImGui::GetKeyName( pressedKey );
-						warning += "' is already bound to this command (";
-						warning += displayName;
-						warning += ")!";
+						const char* keyName = ImGui::GetKeyName( pressedKey ); // TODO: get from dhewm3 instead
+						idStr warning = idStr::Format( "Key '%s' is already bound to this command (%s)!",
+						                               keyName, displayName.c_str() );
 						ShowWarningTooltip( warning );
 						ret = BESS_Selected;
 						// TODO: select column with that specific binding?
 					} else {
 						// that key is already bound to some other command, show confirmation popup :-/
-						//ShowWarningTooltip( "TODO Key is already bound to another command" ); // TODO remove
-
 						rebindKeyNum = pressedKey;
 						rebindOtherEntry = oldBE;
 
@@ -660,14 +647,9 @@ struct BindingEntry {
 		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
 		{
 			const char* keyName = ImGui::GetKeyName( (ImGuiKey)rebindKeyNum );
-			idStr popupText = "Key '";
-			popupText += keyName;
-			popupText += "' is already bound to command ";
-			popupText += rebindOtherEntry->displayName; //rebindOtherCommandName;
-			popupText += "!\nBind to ";
-			popupText += displayName;
-			popupText += " instead?";
-			ImGui::TextUnformatted( popupText );
+
+			ImGui::Text( "Key '%s' is already bound to command %s !\nBind to %s instead?",
+			             keyName, rebindOtherEntry->displayName.c_str(), displayName.c_str() );
 			ImGui::NewLine();
 			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
 			ImGui::NewLine();
@@ -718,7 +700,7 @@ struct BindingEntry {
 
 		if ( selectionState == BESS_WantClear ) {
 			if ( bindings.size() == 0 || (size_t)selectedColumn > bindings.size() ||  bindings[selectedColumn-1].keyNum == -1 ) {
-				// there are no bindings at all for this action, or at least not in the selected column
+				// there are no bindings at all for this command, or at least not in the selected column
 				// => don't show popup, but keep the cell selected
 				selectionState = BESS_Selected;
 				return;
@@ -790,7 +772,7 @@ static void DrawBindingsMenu()
 
 	{
 		// calculate the background color for the first column of the key binding tables
-		// (it contains the action, while the other columns contain the keys bound to that action)
+		// (it contains the command, while the other columns contain the keys bound to that command)
 		ImVec4 bgColor = ImGui::GetStyleColorVec4( ImGuiCol_TableHeaderBg );
 		bgColor.w = 0.5f;
 		displayNameBGColor = ImGui::GetColorU32( bgColor );
@@ -825,8 +807,8 @@ static void DrawBindingsMenu()
 			lastBeginTable = ImGui::BeginTable( tableID, numBindingColumns+1, tableFlags );
 			if ( lastBeginTable ) {
 				ImGui::TableSetupScrollFreeze(1, 0);
-				const float actionColumnWidth = 100.0f; // TODO: set sensible value, depending on font size/scale
-				ImGui::TableSetupColumn( "Action", ImGuiTableColumnFlags_WidthFixed, actionColumnWidth );
+				const float commandColumnWidth = 100.0f; // TODO: set sensible value, depending on font size/scale
+				ImGui::TableSetupColumn( "Command", ImGuiTableColumnFlags_WidthFixed, commandColumnWidth );
 			}
 		} else if ( isHeading && inTable ) {
 			// we've been adding elements to a table (unless lastBeginTable = false) that hasn't
