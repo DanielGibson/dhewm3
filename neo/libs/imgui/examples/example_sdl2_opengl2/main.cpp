@@ -37,7 +37,48 @@ public:
 	operator const char* (void) const {
 		return c_str();
 	}
+
+	static idStr		Format( const char* format, ... );
+	static idStr		VFormat( const char* format, va_list argptr );
 };
+
+idStr idStr::Format( const char* format, ... )
+{
+	va_list argptr;
+	va_start( argptr, format );
+	idStr ret = VFormat( format, argptr );
+	va_end( argptr );
+	return ret;
+}
+
+idStr idStr::VFormat( const char* format, va_list argptr )
+{
+	idStr ret;
+	int len;
+	va_list argptrcopy;
+	char buffer[16000];
+
+	// make a copy of argptr in case we need to call vsnprintf() again after truncation
+#ifdef va_copy // IIRC older VS versions didn't have this?
+	va_copy( argptrcopy, argptr );
+#else
+	argptrcopy = argptr;
+#endif
+
+	len = vsnprintf( buffer, sizeof(buffer), format, argptr );
+
+	if ( len < sizeof(buffer) ) {
+		ret = buffer;
+	} else {
+		// string was truncated, because buffer wasn't big enough.
+		ret.resize( len );
+		vsnprintf( &ret[0], len+1, format, argptrcopy );
+	}
+	va_end( argptrcopy );
+
+	return ret;
+
+}
 
 namespace idMath {
 	int ClampInt(int minVal, int maxVal, int val) {
@@ -142,7 +183,8 @@ enum BindingEntrySelectionState {
 	BESS_NotSelected = 0,
 	BESS_Selected,
 	BESS_WantBind,
-	BESS_WantClear
+	BESS_WantClear,
+	BESS_WantRebind // we were in WantBind, but the key is already bound to another command, so show a confirmation popup
 };
 
 struct BoundKey {
@@ -163,12 +205,15 @@ struct BoundKey {
 	BoundKey ( int _keyNum ) {
 		Set( _keyNum );
 	}
-	
+
 };
 
 struct BindingEntry;
-static const BindingEntry* FindBindingEntryForKey( int keyNum );
+static BindingEntry* FindBindingEntryForKey( int keyNum );
 static int numBindingColumns = 4; // TODO: in real code, save in CVar (in_maxBindingsPerCommand or sth)
+
+static int rebindKeyNum = -1; // only used for HandleRebindPopup()
+static BindingEntry* rebindOtherEntry = nullptr; // ditto
 
 struct BindingEntry {
 	idStr command; // "_impulse3" or "_forward" or similar - or "" for heading entry
@@ -208,7 +253,7 @@ struct BindingEntry {
 
 	void Init()
 	{
-		// TODO: get bindings
+		// TODO: get bindings from Doom3
 	}
 
 	// also updates this->selectedColumn
@@ -377,9 +422,9 @@ struct BindingEntry {
 		}
 	}
 
-	bool HandleClearPopup( const char* popupName )
+	BindingEntrySelectionState HandleClearPopup( const char* popupName )
 	{
-		bool closePopup = false;
+		BindingEntrySelectionState ret = BESS_WantClear;
 		int selectedBinding = selectedColumn - 1;
 
 		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
@@ -428,20 +473,20 @@ struct BindingEntry {
 				}
 
 				ImGui::CloseCurrentPopup();
-				closePopup = true;
+				ret = BESS_Selected;
 			}
 			ImGui::SetItemDefaultFocus();
 
 			ImGui::SameLine( 0.0f, 20.0f );
 			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
 				ImGui::CloseCurrentPopup();
-				closePopup = true;
+				ret = BESS_Selected;
 			}
 
 			ImGui::EndPopup();
 		}
 
-		return closePopup;
+		return ret;
 	}
 
 
@@ -488,9 +533,27 @@ struct BindingEntry {
 		}
 	}
 
-	bool HandleBindPopup( const char* popupName, bool firstOpen )
+	void RemoveKeyBinding( int keyNum )
 	{
-		bool closePopup = false;
+		int delPos = -1;
+		int numBindings = bindings.size();
+		for ( int i = 0; i < numBindings; ++i ) {
+			if ( bindings[i].keyNum == keyNum ) {
+				delPos = i;
+				break;
+			}
+		}
+		if ( delPos != -1 ) {
+			Unbind( keyNum );
+			auto it = bindings.begin() + delPos;
+			bindings.erase( it );
+		}
+	}
+
+
+	BindingEntrySelectionState HandleBindPopup( const char* popupName, bool firstOpen )
+	{
+		BindingEntrySelectionState ret = BESS_WantBind;
 		int selectedBinding = selectedColumn - 1;
 
 		ImGuiIO& io = ImGui::GetIO();
@@ -533,7 +596,7 @@ struct BindingEntry {
 
 			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
 				ImGui::CloseCurrentPopup();
-				closePopup = true;
+				ret = BESS_Selected;
 				io.ConfigFlags |= (ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
 			} else if ( !firstOpen ) {
 				// find out if any key is pressed and bind that (except for Esc which can't be
@@ -555,30 +618,97 @@ struct BindingEntry {
 				}
 
 				if ( pressedKey != ImGuiKey_None ) {
-					const BindingEntry* oldBE = FindBindingEntryForKey( pressedKey );
+					BindingEntry* oldBE = FindBindingEntryForKey( pressedKey );
 					if ( oldBE == nullptr ) {
+						// that key isn't bound yet, hooray!
 						AddKeyBinding( pressedKey );
+						ret = BESS_Selected;
 					} else if ( oldBE == this ) {
+						// that key is already bound to this command, show warning, otherwise do nothing
 						idStr warning = "Key '";
 						warning += ImGui::GetKeyName( pressedKey );
 						warning += "' is already bound to this command (";
 						warning += displayName;
 						warning += ")!";
 						ShowWarningTooltip( warning );
+						ret = BESS_Selected;
 						// TODO: select column with that specific binding?
 					} else {
-						ShowWarningTooltip( "TODO Key is already bound to another command" );
-						// TODO: open confirmation popup -_-
+						// that key is already bound to some other command, show confirmation popup :-/
+						//ShowWarningTooltip( "TODO Key is already bound to another command" ); // TODO remove
+
+						rebindKeyNum = pressedKey;
+						rebindOtherEntry = oldBE;
+
+						ret = BESS_WantRebind;
 					}
 					ImGui::CloseCurrentPopup();
-					closePopup = true;
 					io.ConfigFlags |= (ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
 				}
 			}
 			ImGui::EndPopup();
 		}
 
-		return closePopup;
+		return ret;
+	}
+
+	BindingEntrySelectionState HandleRebindPopup( const char* popupName )
+	{
+		BindingEntrySelectionState ret = BESS_WantRebind;
+		int selectedBinding = selectedColumn - 1;
+
+		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
+		{
+			const char* keyName = ImGui::GetKeyName( (ImGuiKey)rebindKeyNum );
+			idStr popupText = "Key '";
+			popupText += keyName;
+			popupText += "' is already bound to command ";
+			popupText += rebindOtherEntry->displayName; //rebindOtherCommandName;
+			popupText += "!\nBind to ";
+			popupText += displayName;
+			popupText += " instead?";
+			ImGui::TextUnformatted( popupText );
+			ImGui::NewLine();
+			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
+			ImGui::NewLine();
+
+			// center the Ok and Cancel buttons; 260 = 2*120 (button width) + 20 (space added between them)
+			float buttonOffset = (ImGui::GetWindowWidth() - 260.0f) * 0.5f;
+			ImGui::SetCursorPosX( buttonOffset );
+
+			bool confirmedByKey = false;
+			if ( !ImGui::IsAnyItemFocused() ) {
+				// if no item is focused (=> not using keyboard or gamepad navigation to select
+				//  [Ok] or [Cancel] button), check if Enter has been pressed to confirm deletion
+				// (otherwise, enter can be used to chose the selected button)
+				confirmedByKey = IsBindNowKeyPressed();
+			}
+
+			if ( ImGui::Button( "Ok", ImVec2(120, 0) ) || confirmedByKey ) {
+				rebindOtherEntry->RemoveKeyBinding( rebindKeyNum );
+				AddKeyBinding( rebindKeyNum );
+
+				rebindOtherEntry = nullptr;
+				rebindKeyNum = -1;
+
+				ImGui::CloseCurrentPopup();
+				ret = BESS_Selected;
+			}
+			ImGui::SetItemDefaultFocus();
+
+			ImGui::SameLine( 0.0f, 20.0f );
+			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
+				rebindOtherEntry = nullptr;
+				rebindKeyNum = -1;
+
+				ImGui::CloseCurrentPopup();
+				ret = BESS_Selected;
+			}
+
+			ImGui::EndPopup();
+		}
+
+		return ret;
 	}
 
 	void HandlePopup( BindingEntrySelectionState& selectionState )
@@ -594,9 +724,11 @@ struct BindingEntry {
 				return;
 			}
 			popupName = (selectedColumn == 0) ? "Unbind keys" : "Unbind key";
-		} else {
-			assert( selectionState == BESS_WantBind );
+		} else if ( selectionState == BESS_WantBind ) {
 			popupName = "Bind key";
+		} else {
+			assert( selectionState == BESS_WantRebind );
+			popupName = "Confirm rebinding key";
 		}
 
 		static bool popupOpened = false;
@@ -609,15 +741,18 @@ struct BindingEntry {
 		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
 		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f) );
 
-		bool closePopup = false;
+		BindingEntrySelectionState newSelState = BESS_Selected;
 		if ( selectionState == BESS_WantClear ) {
-			closePopup = HandleClearPopup( popupName );
+			newSelState = HandleClearPopup( popupName );
+		} else if ( selectionState == BESS_WantBind ) {
+			newSelState = HandleBindPopup( popupName, firstOpen );
 		} else {
-			closePopup = HandleBindPopup( popupName, firstOpen );
+			newSelState = HandleRebindPopup( popupName );
 		}
-		if ( closePopup ) {
-			selectionState = BESS_Selected;
+
+		if ( newSelState != selectionState ) {
 			popupOpened = false;
+			selectionState = newSelState;
 		}
 	}
 };
@@ -634,9 +769,9 @@ static BindingEntry bindingEntries[] = {
 };
 
 // return NULL if not currently bound to anything
-static const BindingEntry* FindBindingEntryForKey( int keyNum )
+static BindingEntry* FindBindingEntryForKey( int keyNum )
 {
-	for ( const BindingEntry& be : bindingEntries ) {
+	for ( BindingEntry& be : bindingEntries ) {
 		for ( const BoundKey& bk : be.bindings ) {
 			if ( bk.keyNum == keyNum ) {
 				return &be;
@@ -721,7 +856,7 @@ static void DrawBindingsMenu()
 
 	ImGui::PopStyleVar(); // ImGuiStyleVar_SelectableTextAlign
 
-	// WantBind or WantClear => show a popup
+	// WantBind or WantClear or WantRebind => show a popup
 	if ( selectionState > BESS_Selected ) {
 		assert(selectedRow >= 0 && selectedRow < numBindingEntries);
 		bindingEntries[selectedRow].HandlePopup( selectionState );
