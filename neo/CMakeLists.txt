@@ -17,8 +17,6 @@ project(dhewm3)
 # LIBC_MALLOC		-DUSE_LIBC_MALLOC=0
 # ID_NOLANADDRESS	-DID_NOLANADDRESS
 
-# TODO: we need C++11 for ImGui
-
 # fallback for cmake versions without add_compile_options
 if(NOT COMMAND add_compile_options)
 	function(add_compile_options)
@@ -72,6 +70,10 @@ if(NOT MSVC) # GCC/clang or compatible, hopefully
 		set(HARDLINK_GAME ON)
 	endif()
 endif()
+
+# we need C++11 for ImGui
+# TODO: if we allow disabling ImGui, we could disable setting the c++ standard - or maybe just embrace C++11?
+set (CMAKE_CXX_STANDARD 11)
 
 if(NOT CMAKE_SYSTEM_PROCESSOR)
 	message(FATAL_ERROR "No target CPU architecture set")

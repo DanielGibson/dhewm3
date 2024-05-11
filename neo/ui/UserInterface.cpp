@@ -346,6 +346,7 @@ const char *idUserInterfaceLocal::HandleEvent( const sysEvent_t *event, int _tim
 		bindHandler = NULL;
 		return ret;
 	}
+	// TODO: imgui bindhandler
 
 	// DG: used to translate gamepad input into events the UI system is familiar with
 	sysEvent_t fakedEvent = {};
@@ -773,6 +774,8 @@ void idUserInterfaceLocal::SetKeyBindingNames( void ) {
 	}
 	// walk the windows
 	RecurseSetKeyBindingNames( desktop );
+
+	// TODO: if dhewm3settings UI is open, update it
 }
 
 /*

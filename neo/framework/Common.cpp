@@ -2748,6 +2748,8 @@ void idCommonLocal::UnloadGameDLL( void ) {
 
 	com_debuggerSupported = false; // HvG: Reset debugger availability.
 	gameCallbacks.Reset(); // DG: these callbacks are invalid now because DLL has been unloaded
+
+	// TODO: possibly reset Dhewm3SettingsMenu, it will probably cache values from game entity definitions
 }
 
 /*
