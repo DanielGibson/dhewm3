@@ -120,6 +120,7 @@ static void UpdateWarningTooltip()
 	}
 	// TODO: also hide if a key was pressed or maybe even if the mouse was moved (too much)?
 
+	// TODO: use overlay instead (see imgui overlay example) ?
 	ImGui::BeginTooltip();
 	// TODO: warning icon
 
@@ -149,7 +150,7 @@ static bool IsKeyPressed( ImGuiKey key ) {
 	//  but what gamepad button to use for select?
 	//   - maybe ImGuiKey_GamepadFaceUp for enter and facedown for select?
 	//   - I think we don't really need select, just bind and clear and cancel
-	//     => maybe faceup for clear, facedown for bind (enter) and Start for cancel 
+	//     => maybe faceup for clear, facedown for bind (enter) and Start for cancel
 	//       (possibly also faceright for cancel, unless in binding mode where one might want to bind it)
 
 static bool IsSelectionKeyPressed() {
@@ -287,10 +288,14 @@ struct BindingEntry {
 						selectedColumn = column;
 					}
 				} else if ( IsBindNowKeyPressed() ) {
+					// FIXME: if a column is already selected, that should probably have precedence over the focus?
+					//        AT LEAST if it's column 0
 					printf("focus bind now\n");
 					selState = BESS_WantBind;
 					selectedColumn = column;
 				} else if ( IsClearKeyPressed() ) {
+					// FIXME: if a column is already selected, that should probably have precedence over the focus?
+					//        AT LEAST if it's column 0
 					printf("focus clear now\n");
 					bool nothingToClear = false;
 					if ( column == 0 ) {
@@ -339,7 +344,7 @@ struct BindingEntry {
 		}
 
 		// this column is selected => highlight it
-		if ( selState != BESS_NotSelected && selectedColumn == column ) {
+		if ( selState != BESS_NotSelected && selectedColumn == column && column <= numBindingColumns ) {
 			// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
 			// but ImGuiCol_HeaderHovered is more visible, IMO
 			ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
@@ -354,7 +359,7 @@ struct BindingEntry {
 		}
 	}
 
-	BindingEntrySelectionState Draw( int numBindings, const BindingEntrySelectionState oldSelState )
+	BindingEntrySelectionState Draw( int numBindingColumns, const BindingEntrySelectionState oldSelState )
 	{
 		if ( IsHeading() ) {
 			ImGui::SeparatorText( displayName );
@@ -387,10 +392,11 @@ struct BindingEntry {
 				AddDescrTooltip( description );
 			}
 
-			for ( int col=1; col <= numBindings ; ++col ) {
+			int numBindings = bindings.size();
+			for ( int col=1; col <= numBindingColumns ; ++col ) {
 				ImGui::TableSetColumnIndex( col );
 
-				bool colHasBinding = ((size_t)col <= bindings.size()) && bindings[col-1].keyNum != -1;
+				bool colHasBinding = (col <= numBindings) && bindings[col-1].keyNum != -1;
 				char selTxt[128];
 				if ( colHasBinding ) {
 					snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[col-1].keyName.c_str(), col );
@@ -404,7 +410,62 @@ struct BindingEntry {
 					AddTooltip( bindings[col-1].internalKeyName.c_str() );
 				}
 			}
-			// TODO: additional column with a [...] button or similar if there are even more bindings?
+
+			if ( numBindings > numBindingColumns ) {
+				// TODO: additional column with a [...] button or similar if there are even more bindings?
+				ImGui::TableSetColumnIndex( numBindingColumns + 1 );
+
+				if ( oldSelState != BESS_NotSelected
+				     && (selectedColumn == 0 || selectedColumn > numBindingColumns) ) {
+					// if all columns (col 0) or one of the ones hidden in the menu (that aren't really columns...)
+					// are selected, highlight the last column with the menu (if all are selected,
+					//  it gets highlighted even more to stand out)
+					ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
+					ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
+				}
+#if 0
+				if ( ImGui::SmallButton( "++" ) ) {
+					// TODO
+				} else {
+					ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
+				}
+#else
+				if ( ImGui::BeginMenu( "###morebindings" ) ) {
+					ImGui::TextDisabled( "More keys bound to %s", displayName.c_str() );
+					if ( oldSelState != BESS_NotSelected ) {
+						// to be consistent with the table, I want the selectables in the menu to have
+						// the same brighter color as UpdateSelectionState() uses for the table cells
+						// when selected/hovered. for some reason, selectables use the ImGuiCol_Header* colors,
+						// so overwrite them accordingly
+						ImGui::PushStyleColor( ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
+						ImGui::PushStyleColor( ImGuiCol_HeaderHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive) );
+					}
+					for ( int col = numBindingColumns + 1; col <= numBindings; ++col ) {
+						bool selected = oldSelState != BESS_NotSelected && (selectedColumn == col || selectedColumn == 0);
+						bool colHasBinding = bindings[col-1].keyNum != -1;
+						char selTxt[128];
+						if ( colHasBinding ) {
+							snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[col-1].keyName.c_str(), col );
+						} else {
+							snprintf( selTxt, sizeof(selTxt), "###%d", col );
+						}
+						ImGui::Selectable( selTxt, selected, ImGuiSelectableFlags_DontClosePopups );
+						UpdateSelectionState( col, newSelState );
+
+						if ( colHasBinding ) {
+							AddTooltip( bindings[col-1].internalKeyName.c_str() );
+						}
+					}
+					if ( oldSelState != BESS_NotSelected ) {
+						ImGui::PopStyleColor(2);
+					}
+					ImGui::EndMenu();
+				} else {
+					ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
+				}
+#endif
+			}
+
 
 			ImGui::PopID();
 
@@ -631,6 +692,7 @@ struct BindingEntry {
 						// TODO: select column with that specific binding?
 					} else {
 						// that key is already bound to some other command, show confirmation popup :-/
+						// FIXME: must also handle the case that it's binding to some command that is *not* handled by the menu
 						rebindKeyNum = pressedKey;
 						rebindOtherEntry = oldBE;
 
@@ -747,7 +809,7 @@ struct BindingEntry {
 
 static BindingEntry bindingEntries[] = {
 	{ "", "Move / Look", nullptr },
-	{ "_forward",       "Forward"    , nullptr, { ImGuiKey_W, ImGuiKey_GamepadLStickUp } },
+	{ "_forward",       "Forward"    , nullptr, { ImGuiKey_W, ImGuiKey_GamepadLStickUp, ImGuiKey_A, ImGuiKey_S, ImGuiKey_D, ImGuiKey_F } },
 	{ "_back",          "Backpedal"  , "walk back" },
 	{ "_moveLeft",      "Move Left"  , "strafe left" },
 	{ "_moveRight",     "Move Right" , nullptr },
@@ -790,7 +852,7 @@ static void DrawBindingsMenu()
 	// make the key column entries in the bindings table center-aligned instead of left-aligned
 	ImGui::PushStyleVar( ImGuiStyleVar_SelectableTextAlign, ImVec2(0.5f, 0.0f) );
 
-	ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
+	ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg; // | ImGuiTableFlags_BordersInnerV;
 	// inTable: are we currently adding elements to a table of bindings?
 	//  (we're not when adding a heading from bindingEntries: existing tables are ended
 	//   before a heading and a new table is started afterwards)
@@ -799,6 +861,10 @@ static void DrawBindingsMenu()
 	// (init to true so the first heading before any bindings is shown)
 	bool lastBeginTable = true;
 	int tableNum = 1;
+
+	const float commandColumnWidth = ImGui::CalcTextSize( "dhewm3 settings menu" ).x;
+	const float overflowColumnWidth = ImGui::CalcTextSize( "++" ).x + 10.0f;
+
 	const int numBindingEntries = IM_ARRAYSIZE(bindingEntries);
 	for ( int i=0; i < numBindingEntries; ++i ) {
 		BindingEntry& be = bindingEntries[i];
@@ -810,11 +876,17 @@ static void DrawBindingsMenu()
 			inTable = true;
 			char tableID[10];
 			snprintf( tableID, sizeof(tableID), "bindTab%d", tableNum++ );
-			lastBeginTable = ImGui::BeginTable( tableID, numBindingColumns+1, tableFlags );
+			lastBeginTable = ImGui::BeginTable( tableID, numBindingColumns + 2, tableFlags );
 			if ( lastBeginTable ) {
 				ImGui::TableSetupScrollFreeze(1, 0);
-				const float commandColumnWidth = 100.0f; // TODO: set sensible value, depending on font size/scale
 				ImGui::TableSetupColumn( "Command", ImGuiTableColumnFlags_WidthFixed, commandColumnWidth );
+				for ( int j=1; j <= numBindingColumns; ++j ) {
+					char colName[16];
+					snprintf(colName, sizeof(colName), "binding%d", j);
+					ImGui::TableSetupColumn( colName );
+				}
+
+				ImGui::TableSetupColumn( "More", ImGuiTableColumnFlags_WidthFixed, overflowColumnWidth );
 			}
 		} else if ( isHeading && inTable ) {
 			// we've been adding elements to a table (unless lastBeginTable = false) that hasn't
@@ -827,7 +899,7 @@ static void DrawBindingsMenu()
 
 		if ( lastBeginTable ) { // if ImGui::BeginTable() returned false, don't draw its elements
 			BindingEntrySelectionState bess = (selectedRow == i) ? selectionState : BESS_NotSelected;
-			bess = be.Draw(numBindingColumns, bess);
+			bess = be.Draw( numBindingColumns, bess );
 			if ( bess != BESS_NotSelected ) {
 				selectedRow = i;
 				selectionState = bess;
@@ -926,6 +998,20 @@ int main(int, char**)
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
     //ImGui::StyleColorsLight();
+
+    // make it a bit prettier with rounded edges
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 2.0f;
+    style.FrameRounding = 3.0f;
+    //style.ChildRounding = 6.0f;
+    style.ScrollbarRounding = 8.0f;
+    style.GrabRounding = 1.0f;
+    style.PopupRounding = 2.0f;
+
+    ImVec4* colors = style.Colors;
+    colors[ImGuiCol_TitleBg]                = ImVec4(0.28f, 0.36f, 0.48f, 0.88f);
+    colors[ImGuiCol_TabHovered]             = ImVec4(0.42f, 0.69f, 1.00f, 0.80f);
+    colors[ImGuiCol_TabActive]              = ImVec4(0.24f, 0.51f, 0.83f, 1.00f);
 
     // Setup Platform/Renderer backends
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
