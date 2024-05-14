@@ -423,14 +423,74 @@ struct BindingEntry {
 					ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
 					ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
 				}
-#if 0
-				if ( ImGui::SmallButton( "++" ) ) {
-					// TODO
-				} else {
-					ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
+#if 01
+				static bool showOverflowMenu = false;
+				if ( ImGui::SmallButton( "++" ) ) { // TODO: ImGui::ArrowButton() ?
+					showOverflowMenu = !showOverflowMenu;
+					// TODO: select this row, and only draw the menu if this row is selected
+				}
+				ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
+				
+				if ( showOverflowMenu ) {
+					// For each axis:
+					// - Use 0.0f as min or FLT_MAX as max if you don't want limits, e.g. size_min = (500.0f, 0.0f), size_max = (FLT_MAX, FLT_MAX) sets a minimum width.
+					// - Use -1 for both min and max of same axis to preserve current size which itself is a constraint.
+					// - See "Demo->Examples->Constrained-resizing window" for examples.
+					// TODO: SetNextWindowSizeConstraints() ?
+					// TODO: ImGui::SetNextWindowPos()
+					idStr menuWinTitle = idStr::Format( "More keys bound to %s", displayName.c_str() );
+					
+					ImVec2 curPos = ImGui::GetCursorScreenPos();
+					curPos.x = ImGui::GetWindowPos().x + ImGui::GetWindowWidth();
+					curPos.y -= ImGui::GetItemRectSize().y * 2.0f;
+					ImGui::SetNextWindowPos(curPos);
+					float menuWinWidth = ImGui::CalcTextSize(menuWinTitle).x + 2.0f * ImGui::GetFontSize();
+					ImGui::SetNextWindowSizeConstraints( ImVec2(menuWinWidth, -1 /*ImGui::GetFontSize()*/), ImVec2(menuWinWidth*2.0f, -1) );
+					ImGuiWindowFlags menuWinFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings; // | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
+					
+					//ImGui::PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]);
+					
+					//ImGui::PopStyleColor();
+					
+					if ( ImGui::Begin( menuWinTitle, &showOverflowMenu, menuWinFlags ) ) {
+						//ImGui::TextUnformatted( menuWinTitle );
+						if ( oldSelState != BESS_NotSelected ) {
+							// to be consistent with the table, I want the selectables in the menu to have
+							// the same brighter color as UpdateSelectionState() uses for the table cells
+							// when selected/hovered. for some reason, selectables use the ImGuiCol_Header* colors,
+							// so overwrite them accordingly
+							ImGui::PushStyleColor( ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
+							ImGui::PushStyleColor( ImGuiCol_HeaderHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive) );
+						}
+						for ( int col = numBindingColumns + 1; col <= numBindings; ++col ) {
+							bool selected = oldSelState != BESS_NotSelected && (selectedColumn == col || selectedColumn == 0);
+							bool colHasBinding = bindings[col-1].keyNum != -1;
+							char selTxt[128];
+							if ( colHasBinding ) {
+								snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[col-1].keyName.c_str(), col );
+							} else {
+								snprintf( selTxt, sizeof(selTxt), "###%d", col );
+							}
+							ImGui::Selectable( selTxt, selected, ImGuiSelectableFlags_DontClosePopups );
+							UpdateSelectionState( col, newSelState );
+
+							if ( colHasBinding ) {
+								AddTooltip( bindings[col-1].internalKeyName.c_str() );
+							}
+						}
+						if ( oldSelState != BESS_NotSelected ) {
+							ImGui::PopStyleColor(2);
+						}
+					}
+					ImGui::End();
 				}
 #else
-				if ( ImGui::BeginMenu( "###morebindings" ) ) {
+				if ( ImGui::SmallButton( "++" ) ) {
+					showOverflowMenu = !showOverflowMenu;
+				}
+				ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
+				
+				if ( showOverflowMenu && ImGui::BeginMenu( "###morebindings" ) ) {
 					ImGui::TextDisabled( "More keys bound to %s", displayName.c_str() );
 					if ( oldSelState != BESS_NotSelected ) {
 						// to be consistent with the table, I want the selectables in the menu to have
@@ -461,7 +521,7 @@ struct BindingEntry {
 					}
 					ImGui::EndMenu();
 				} else {
-					ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
+					//ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
 				}
 #endif
 			}
@@ -862,6 +922,8 @@ static void DrawBindingsMenu()
 	bool lastBeginTable = true;
 	int tableNum = 1;
 
+	//float overFlowColumnT = ImGui::CalcTextSize( "++" ).x;
+	const ImVec2 defFramePadding = ImGui::GetStyle().FramePadding;
 	const float commandColumnWidth = ImGui::CalcTextSize( "dhewm3 settings menu" ).x;
 	const float overflowColumnWidth = ImGui::CalcTextSize( "++" ).x + 10.0f;
 
