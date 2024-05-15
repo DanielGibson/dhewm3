@@ -190,6 +190,14 @@ const char* GetKeyName( int keyNum, bool localized = true )
 // background color for the first column of the binding table, that contains the name of the command
 static ImU32 displayNameBGColor = 0;
 
+static float CalcDialogButtonWidth() {
+	// with the standard font, 120px wide Ok/Cancel buttons look good,
+	// this text (+default padding) has that width there
+	float testTextWidth = ImGui::CalcTextSize( "Ok or Cancel ???" ).x;
+	float framePadWidth = ImGui::GetStyle().FramePadding.x;
+	return testTextWidth + 2.0f * framePadWidth;
+}
+
 enum BindingEntrySelectionState {
 	BESS_NotSelected = 0,
 	BESS_Selected,
@@ -362,19 +370,15 @@ struct BindingEntry {
 	bool DrawAllBindingsWindow( /* in+out */ BindingEntrySelectionState& selState )
 	{
 		bool showThisMenu = true;
-		idStr menuWinTitle = idStr::Format( "All keys bound to %s", displayName.c_str() );
+		idStr menuWinTitle = idStr::Format( "All keys bound to %s###allBindingsWindow", displayName.c_str() );
 		int numBindings = bindings.size();
 
 		ImGuiWindowFlags menuWinFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings; // | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
 
+		// TODO: use BeginPopup() instead?
 		if ( ImGui::Begin( menuWinTitle, &showThisMenu, menuWinFlags ) ) {
 
 			ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_PadOuterX;
-			float fontSize = ImGui::GetFontSize();
-			//ImVec2 framePad = ImGui::GetStyle().FramePadding;
-			//ImVec2 cellPad  = ImGui::GetStyle().CellPadding;
-			// use GetFrameHeight() and similar instead, when AlignTextToFramePadding() isn't enough
-			//ImGui::PushStyleVar( ImGuiStyleVar_CellPadding, ImVec2( fontSize, framePad.y + cellPad.y ) );
 
 			if ( ImGui::BeginTable( "AllBindingsForCommand", 2, tableFlags ) ) {
 				ImGui::TableNextRow();
@@ -449,12 +453,8 @@ struct BindingEntry {
 
 					ImGui::PopID(); // col
 				}
-				ImGui::Unindent();
 				ImGui::EndTable();
 
-				//ImGui::TableNextRow();
-				//ImGui::TableSetColumnIndex( 1 );
-				//ImGui::Spacing();
 				ImGui::Indent();
 				if ( ImGui::Button( "Add bind ..." ) ) {
 					selState = BESS_WantBind;
@@ -462,8 +462,6 @@ struct BindingEntry {
 				} else {
 					ImGui::SetItemTooltip( "Add another keybinding for %s", displayName.c_str() );
 				}
-
-				//ImGui::EndTable();
 			}
 		}
 		ImGui::End();
@@ -471,7 +469,7 @@ struct BindingEntry {
 		return showThisMenu;
 	}
 
-	BindingEntrySelectionState Draw( int numBindingColumns, const BindingEntrySelectionState oldSelState )
+	BindingEntrySelectionState Draw( int bindRowNum, const BindingEntrySelectionState oldSelState )
 	{
 		if ( IsHeading() ) {
 			ImGui::SeparatorText( displayName );
@@ -524,18 +522,35 @@ struct BindingEntry {
 				}
 			}
 
+			// TODO: show that button for the all bindings menu for all commands,
+			//   with different color for those that really have more bindings?
 			if ( numBindings > numBindingColumns ) {
 				ImGui::TableSetColumnIndex( numBindingColumns + 1 );
 
-				static bool showAllBindingsMenu = false;
+				static int  showAllBindingsMenuRowNum = -1;
+				bool thisBindingEntryWasSelected = (showAllBindingsMenuRowNum == bindRowNum);
+
+				if ( thisBindingEntryWasSelected ) {
+					// if the all bindings menu/window is showed for this entry,
+					// the button is "active" => switch its normal and hovered colors
+					ImVec4 btnColor = ImGui::GetStyleColorVec4( ImGuiCol_ButtonHovered );
+					ImGui::PushStyleColor( ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_Button) );
+					ImGui::PushStyleColor( ImGuiCol_Button, btnColor );
+				}
+
 				if ( ImGui::Button( "++" ) ) { // TODO: ImGui::ArrowButton() ?
-					showAllBindingsMenu = !showAllBindingsMenu;
-					// TODO: select this row, and only draw the menu if this row is selected
+					showAllBindingsMenuRowNum = thisBindingEntryWasSelected ? -1 : bindRowNum;
 				}
 				ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show all its bindings.", displayName.c_str() );
 
-				if ( showAllBindingsMenu ) {
-					showAllBindingsMenu = DrawAllBindingsWindow( newSelState );
+				if ( thisBindingEntryWasSelected ) {
+					ImGui::PopStyleColor(2); // restore button colors
+				}
+
+				if ( showAllBindingsMenuRowNum == bindRowNum ) {
+					if ( !DrawAllBindingsWindow( newSelState ) ) {
+						showAllBindingsMenuRowNum = -1;
+					}
 				}
 			}
 
@@ -581,8 +596,10 @@ struct BindingEntry {
 			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
 			ImGui::NewLine();
 
-			// center the Ok and Cancel buttons; 260 = 2*120 (button width) + 20 (space added between them)
-			float buttonOffset = (ImGui::GetWindowWidth() - 260.0f) * 0.5f;
+			// center the Ok and Cancel buttons; 20 (20 is the space added between them)
+			float dialogButtonWidth = CalcDialogButtonWidth();
+			float spaceBetweenButtons = ImGui::GetFontSize();
+			float buttonOffset = (ImGui::GetWindowWidth() - 2.0f*dialogButtonWidth - spaceBetweenButtons) * 0.5f;
 			ImGui::SetCursorPosX( buttonOffset );
 
 			bool confirmedByKey = false;
@@ -592,13 +609,15 @@ struct BindingEntry {
 				// (otherwise, enter can be used to chose the selected button)
 				confirmedByKey = IsBindNowKeyPressed();
 			}
-
-			if ( ImGui::Button( "Ok", ImVec2(120, 0) ) || confirmedByKey ) {
+			if ( ImGui::Button( "Ok", ImVec2(dialogButtonWidth, 0) ) || confirmedByKey ) {
 				if ( selectedColumn == 0 ) {
 					for ( BoundKey& bk : bindings ) {
 						Unbind( bk.keyNum );
 					}
 					bindings.clear();
+					// don't select all columns after they have been cleared,
+					// instead only select the first, good point to add a new binding
+					selectedColumn = 1;
 				} else {
 					Unbind( bindings[selectedBinding].keyNum );
 
@@ -611,8 +630,8 @@ struct BindingEntry {
 			}
 			ImGui::SetItemDefaultFocus();
 
-			ImGui::SameLine( 0.0f, 20.0f );
-			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
+			ImGui::SameLine( 0.0f, spaceBetweenButtons );
+			if ( ImGui::Button( "Cancel", ImVec2(dialogButtonWidth, 0) ) || IsCancelKeyPressed() ) {
 				ImGui::CloseCurrentPopup();
 				ret = BESS_Selected;
 			}
@@ -719,11 +738,12 @@ struct BindingEntry {
 			ImGui::TextUnformatted( "... or press Escape to cancel." );
 
 			ImGui::NewLine();
-			// center the Cancel button; 120 is the button width
-			float buttonOffset = (windowWidth - 120.0f) * 0.5f;
+			// center the Cancel button
+			float dialogButtonWidth = CalcDialogButtonWidth();
+			float buttonOffset = (windowWidth - dialogButtonWidth) * 0.5f;
 			ImGui::SetCursorPosX( buttonOffset );
 
-			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
+			if ( ImGui::Button( "Cancel", ImVec2(dialogButtonWidth, 0) ) || IsCancelKeyPressed() ) {
 				ImGui::CloseCurrentPopup();
 				ret = BESS_Selected;
 				io.ConfigFlags |= (ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
@@ -794,8 +814,10 @@ struct BindingEntry {
 			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
 			ImGui::NewLine();
 
-			// center the Ok and Cancel buttons; 260 = 2*120 (button width) + 20 (space added between them)
-			float buttonOffset = (ImGui::GetWindowWidth() - 260.0f) * 0.5f;
+			// center the Ok and Cancel buttons; 20 is the space added between them
+			float dialogButtonWidth = CalcDialogButtonWidth();
+			float spaceBetweenButtons = ImGui::GetFontSize();
+			float buttonOffset = (ImGui::GetWindowWidth() - 2.0f*dialogButtonWidth - spaceBetweenButtons) * 0.5f;
 			ImGui::SetCursorPosX( buttonOffset );
 
 			bool confirmedByKey = false;
@@ -806,7 +828,7 @@ struct BindingEntry {
 				confirmedByKey = IsBindNowKeyPressed();
 			}
 
-			if ( ImGui::Button( "Ok", ImVec2(120, 0) ) || confirmedByKey ) {
+			if ( ImGui::Button( "Ok", ImVec2(dialogButtonWidth, 0) ) || confirmedByKey ) {
 				rebindOtherEntry->RemoveKeyBinding( rebindKeyNum );
 				AddKeyBinding( rebindKeyNum );
 
@@ -818,8 +840,8 @@ struct BindingEntry {
 			}
 			ImGui::SetItemDefaultFocus();
 
-			ImGui::SameLine( 0.0f, 20.0f );
-			if ( ImGui::Button( "Cancel", ImVec2(120, 0) ) || IsCancelKeyPressed() ) {
+			ImGui::SameLine( 0.0f, spaceBetweenButtons );
+			if ( ImGui::Button( "Cancel", ImVec2(dialogButtonWidth, 0) ) || IsCancelKeyPressed() ) {
 				rebindOtherEntry = nullptr;
 				rebindKeyNum = -1;
 
@@ -973,7 +995,7 @@ static void DrawBindingsMenu()
 
 		if ( lastBeginTable ) { // if ImGui::BeginTable() returned false, don't draw its elements
 			BindingEntrySelectionState bess = (selectedRow == i) ? selectionState : BESS_NotSelected;
-			bess = be.Draw( numBindingColumns, bess );
+			bess = be.Draw( i, bess );
 			if ( bess != BESS_NotSelected ) {
 				selectedRow = i;
 				selectionState = bess;
