@@ -359,6 +359,118 @@ struct BindingEntry {
 		}
 	}
 
+	bool DrawAllBindingsWindow( /* in+out */ BindingEntrySelectionState& selState )
+	{
+		bool showThisMenu = true;
+		idStr menuWinTitle = idStr::Format( "All keys bound to %s", displayName.c_str() );
+		int numBindings = bindings.size();
+
+		ImGuiWindowFlags menuWinFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings; // | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
+
+		if ( ImGui::Begin( menuWinTitle, &showThisMenu, menuWinFlags ) ) {
+
+			ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_PadOuterX;
+			float fontSize = ImGui::GetFontSize();
+			//ImVec2 framePad = ImGui::GetStyle().FramePadding;
+			//ImVec2 cellPad  = ImGui::GetStyle().CellPadding;
+			// use GetFrameHeight() and similar instead, when AlignTextToFramePadding() isn't enough
+			//ImGui::PushStyleVar( ImGuiStyleVar_CellPadding, ImVec2( fontSize, framePad.y + cellPad.y ) );
+
+			if ( ImGui::BeginTable( "AllBindingsForCommand", 2, tableFlags ) ) {
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex( 0 );
+
+				// turn the next button red
+				ImGui::PushStyleColor( ImGuiCol_Button,        ImVec4(1.00f, 0.17f, 0.17f, 0.58f) );
+				ImGui::PushStyleColor( ImGuiCol_ButtonHovered, ImVec4(1.00f, 0.17f, 0.17f, 1.00f) );
+				ImGui::PushStyleColor( ImGuiCol_ButtonActive,  ImVec4(1.00f, 0.37f, 0.37f, 1.00f) );
+
+				ImGui::Indent();
+				if ( ImGui::Button( idStr::Format( "Clear all" ) ) ) {
+					selState = BESS_WantClear;
+					selectedColumn = 0;
+				} else {
+					ImGui::SetItemTooltip( "Clear all keybindings of %s", displayName.c_str() );
+				}
+				ImGui::Unindent();
+				ImGui::PopStyleColor(3); // return to normal button color
+				ImGui::Spacing();
+
+				ImU32 highlightRowColor = 0;
+				if ( selectedColumn >= 0 ) {
+					highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
+				}
+
+				ImGui::Indent( ImGui::GetFontSize() * 0.5f );
+
+				for ( int col = 1; col <= numBindings; ++col ) { // FIXME: don't call this col, in this menu it's rows..
+					ImGui::TableNextRow(); // 0, framePad.y + fontSize );
+					ImGui::TableSetColumnIndex( 0 );
+
+					ImGui::PushID( col ); // the buttons have the same names in every row, so push the row number as ID
+
+					//bool selected = (oldSelState != BESS_NotSelected) && (selectedColumn == col || selectedColumn == 0);
+					bool colHasBinding = bindings[col-1].keyNum != -1;
+					const char* keyName = colHasBinding ? bindings[col-1].keyName.c_str() : "";
+
+					if ( colHasBinding ) {
+						ImGui::AlignTextToFramePadding();
+						ImGui::TextUnformatted( keyName );
+						AddTooltip( bindings[col-1].internalKeyName.c_str() );
+					}
+
+					if ( selectedColumn == col || selectedColumn == 0 ) {
+						ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
+					}
+
+					ImGui::TableNextColumn();
+					if ( colHasBinding ) {
+						if ( ImGui::Button( "Rebind" ) ) {
+							selState = BESS_WantBind;
+							selectedColumn = col;
+						} else {
+							ImGui::SetItemTooltip( "Unbind '%s' and bind another key to %s", keyName, displayName.c_str() );
+						}
+						ImGui::SameLine();
+						if ( ImGui::Button( "Clear" ) ) {
+							selState = BESS_WantClear;
+							selectedColumn = col;
+						} else {
+							ImGui::SetItemTooltip( "Unbind key '%s' from %s", keyName, displayName.c_str() );
+						}
+					} else {
+						if ( ImGui::Button( "Bind" ) ) {
+							selState = BESS_WantBind;
+							selectedColumn = col;
+						} else {
+							ImGui::SetItemTooltip( "Set a keybinding for %s", displayName.c_str() );
+						}
+					}
+
+					ImGui::PopID(); // col
+				}
+				ImGui::Unindent();
+				ImGui::EndTable();
+
+				//ImGui::TableNextRow();
+				//ImGui::TableSetColumnIndex( 1 );
+				//ImGui::Spacing();
+				ImGui::Indent();
+				if ( ImGui::Button( "Add bind ..." ) ) {
+					selState = BESS_WantBind;
+					selectedColumn = 0;
+				} else {
+					ImGui::SetItemTooltip( "Add another keybinding for %s", displayName.c_str() );
+				}
+
+				//ImGui::EndTable();
+			}
+		}
+		ImGui::End();
+
+		return showThisMenu;
+	}
+
 	BindingEntrySelectionState Draw( int numBindingColumns, const BindingEntrySelectionState oldSelState )
 	{
 		if ( IsHeading() ) {
@@ -369,8 +481,9 @@ struct BindingEntry {
 		} else {
 			ImGui::PushID( command );
 
-			ImGui::TableNextRow();
+			ImGui::TableNextRow( 0, ImGui::GetFrameHeightWithSpacing() ) ; //, ImGui::GetFrameHeight() );
 			ImGui::TableSetColumnIndex( 0 );
+			ImGui::AlignTextToFramePadding();
 
 			// the first column (with the display name in it) gets a different background color
 			ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, displayNameBGColor );
@@ -412,120 +525,19 @@ struct BindingEntry {
 			}
 
 			if ( numBindings > numBindingColumns ) {
-				// TODO: additional column with a [...] button or similar if there are even more bindings?
 				ImGui::TableSetColumnIndex( numBindingColumns + 1 );
 
-				if ( oldSelState != BESS_NotSelected
-				     && (selectedColumn == 0 || selectedColumn > numBindingColumns) ) {
-					// if all columns (col 0) or one of the ones hidden in the menu (that aren't really columns...)
-					// are selected, highlight the last column with the menu (if all are selected,
-					//  it gets highlighted even more to stand out)
-					ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
-					ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
-				}
-#if 01
-				static bool showOverflowMenu = false;
-				if ( ImGui::SmallButton( "++" ) ) { // TODO: ImGui::ArrowButton() ?
-					showOverflowMenu = !showOverflowMenu;
+				static bool showAllBindingsMenu = false;
+				if ( ImGui::Button( "++" ) ) { // TODO: ImGui::ArrowButton() ?
+					showAllBindingsMenu = !showAllBindingsMenu;
 					// TODO: select this row, and only draw the menu if this row is selected
 				}
-				ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
-				
-				if ( showOverflowMenu ) {
-					// For each axis:
-					// - Use 0.0f as min or FLT_MAX as max if you don't want limits, e.g. size_min = (500.0f, 0.0f), size_max = (FLT_MAX, FLT_MAX) sets a minimum width.
-					// - Use -1 for both min and max of same axis to preserve current size which itself is a constraint.
-					// - See "Demo->Examples->Constrained-resizing window" for examples.
-					// TODO: SetNextWindowSizeConstraints() ?
-					// TODO: ImGui::SetNextWindowPos()
-					idStr menuWinTitle = idStr::Format( "More keys bound to %s", displayName.c_str() );
-					
-					ImVec2 curPos = ImGui::GetCursorScreenPos();
-					curPos.x = ImGui::GetWindowPos().x + ImGui::GetWindowWidth();
-					curPos.y -= ImGui::GetItemRectSize().y * 2.0f;
-					ImGui::SetNextWindowPos(curPos);
-					float menuWinWidth = ImGui::CalcTextSize(menuWinTitle).x + 2.0f * ImGui::GetFontSize();
-					ImGui::SetNextWindowSizeConstraints( ImVec2(menuWinWidth, -1 /*ImGui::GetFontSize()*/), ImVec2(menuWinWidth*2.0f, -1) );
-					ImGuiWindowFlags menuWinFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings; // | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
-					
-					//ImGui::PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]);
-					
-					//ImGui::PopStyleColor();
-					
-					if ( ImGui::Begin( menuWinTitle, &showOverflowMenu, menuWinFlags ) ) {
-						//ImGui::TextUnformatted( menuWinTitle );
-						if ( oldSelState != BESS_NotSelected ) {
-							// to be consistent with the table, I want the selectables in the menu to have
-							// the same brighter color as UpdateSelectionState() uses for the table cells
-							// when selected/hovered. for some reason, selectables use the ImGuiCol_Header* colors,
-							// so overwrite them accordingly
-							ImGui::PushStyleColor( ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
-							ImGui::PushStyleColor( ImGuiCol_HeaderHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive) );
-						}
-						for ( int col = numBindingColumns + 1; col <= numBindings; ++col ) {
-							bool selected = oldSelState != BESS_NotSelected && (selectedColumn == col || selectedColumn == 0);
-							bool colHasBinding = bindings[col-1].keyNum != -1;
-							char selTxt[128];
-							if ( colHasBinding ) {
-								snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[col-1].keyName.c_str(), col );
-							} else {
-								snprintf( selTxt, sizeof(selTxt), "###%d", col );
-							}
-							ImGui::Selectable( selTxt, selected, ImGuiSelectableFlags_DontClosePopups );
-							UpdateSelectionState( col, newSelState );
+				ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show all its bindings.", displayName.c_str() );
 
-							if ( colHasBinding ) {
-								AddTooltip( bindings[col-1].internalKeyName.c_str() );
-							}
-						}
-						if ( oldSelState != BESS_NotSelected ) {
-							ImGui::PopStyleColor(2);
-						}
-					}
-					ImGui::End();
+				if ( showAllBindingsMenu ) {
+					showAllBindingsMenu = DrawAllBindingsWindow( newSelState );
 				}
-#else
-				if ( ImGui::SmallButton( "++" ) ) {
-					showOverflowMenu = !showOverflowMenu;
-				}
-				ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
-				
-				if ( showOverflowMenu && ImGui::BeginMenu( "###morebindings" ) ) {
-					ImGui::TextDisabled( "More keys bound to %s", displayName.c_str() );
-					if ( oldSelState != BESS_NotSelected ) {
-						// to be consistent with the table, I want the selectables in the menu to have
-						// the same brighter color as UpdateSelectionState() uses for the table cells
-						// when selected/hovered. for some reason, selectables use the ImGuiCol_Header* colors,
-						// so overwrite them accordingly
-						ImGui::PushStyleColor( ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
-						ImGui::PushStyleColor( ImGuiCol_HeaderHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive) );
-					}
-					for ( int col = numBindingColumns + 1; col <= numBindings; ++col ) {
-						bool selected = oldSelState != BESS_NotSelected && (selectedColumn == col || selectedColumn == 0);
-						bool colHasBinding = bindings[col-1].keyNum != -1;
-						char selTxt[128];
-						if ( colHasBinding ) {
-							snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[col-1].keyName.c_str(), col );
-						} else {
-							snprintf( selTxt, sizeof(selTxt), "###%d", col );
-						}
-						ImGui::Selectable( selTxt, selected, ImGuiSelectableFlags_DontClosePopups );
-						UpdateSelectionState( col, newSelState );
-
-						if ( colHasBinding ) {
-							AddTooltip( bindings[col-1].internalKeyName.c_str() );
-						}
-					}
-					if ( oldSelState != BESS_NotSelected ) {
-						ImGui::PopStyleColor(2);
-					}
-					ImGui::EndMenu();
-				} else {
-					//ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show them.", displayName.c_str() );
-				}
-#endif
 			}
-
 
 			ImGui::PopID();
 
@@ -628,7 +640,7 @@ struct BindingEntry {
 					return;
 				}
 			}
-			if ( numBindings < numBindingColumns ) {
+			if ( numBindings < numBindingColumns ) { // TODO: or if we're in the all bindings menu
 				bindings.push_back( BoundKey(keyNum) );
 				selectedColumn = numBindings + 1;
 			} else {
