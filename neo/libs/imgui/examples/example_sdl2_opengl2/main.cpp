@@ -190,7 +190,12 @@ const char* GetKeyName( int keyNum, bool localized = true )
 // background color for the first column of the binding table, that contains the name of the command
 static ImU32 displayNameBGColor = 0;
 
-static float CalcDialogButtonWidth() {
+static const ImVec4 RedButtonColor(1.00f, 0.17f, 0.17f, 0.58f);
+static const ImVec4 RedButtonHoveredColor(1.00f, 0.17f, 0.17f, 1.00f);
+static const ImVec4 RedButtonActiveColor(1.00f, 0.37f, 0.37f, 1.00f);
+
+static float CalcDialogButtonWidth()
+{
 	// with the standard font, 120px wide Ok/Cancel buttons look good,
 	// this text (+default padding) has that width there
 	float testTextWidth = ImGui::CalcTextSize( "Ok or Cancel ???" ).x;
@@ -247,6 +252,7 @@ struct BindingEntry {
 	BindingEntry( const char* _command, const char* _displayName, const char* descr = nullptr )
 	: command( _command ), displayName( _displayName ), description( descr ) {}
 
+	// TODO: the following constructor is only relevant for the proof of concept code
 	BindingEntry( const char* _command, const char* _displayName, const char* descr, std::initializer_list<BoundKey> boundKeys )
 	: command( _command ), displayName( _displayName ), description( descr ), bindings( boundKeys ) {}
 
@@ -271,7 +277,7 @@ struct BindingEntry {
 
 	void Init()
 	{
-		// TODO: get bindings from Doom3
+		// TODO: get bindings for command from Doom3
 	}
 
 	// also updates this->selectedColumn
@@ -374,27 +380,37 @@ struct BindingEntry {
 		int numBindings = bindings.size();
 
 		ImGuiWindowFlags menuWinFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings; // | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
+		const float fontSize = ImGui::GetFontSize();
+		ImVec2 winMinSize = ImGui::CalcTextSize( menuWinTitle, nullptr, true );
+		winMinSize.x += fontSize * 2.0f;
+		ImVec2 maxWinSize = ImGui::GetMainViewport()->WorkSize;
+		maxWinSize.y *= 0.9f;
+		// make sure the window is big enough to show the full title (incl. displayName)
+		// and that it fits into the screen (it can scroll if it gets too long)
+		ImGui::SetNextWindowSizeConstraints( winMinSize, maxWinSize );
 
 		// TODO: use BeginPopup() instead?
 		if ( ImGui::Begin( menuWinTitle, &showThisMenu, menuWinFlags ) ) {
 
-			ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_PadOuterX;
+			ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
 
 			if ( ImGui::BeginTable( "AllBindingsForCommand", 2, tableFlags ) ) {
+				ImGui::TableSetupColumn("command", ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn("buttons", ImGuiTableColumnFlags_WidthFixed);
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex( 0 );
 
 				// turn the next button red
-				ImGui::PushStyleColor( ImGuiCol_Button,        ImVec4(1.00f, 0.17f, 0.17f, 0.58f) );
-				ImGui::PushStyleColor( ImGuiCol_ButtonHovered, ImVec4(1.00f, 0.17f, 0.17f, 1.00f) );
-				ImGui::PushStyleColor( ImGuiCol_ButtonActive,  ImVec4(1.00f, 0.37f, 0.37f, 1.00f) );
+				ImGui::PushStyleColor( ImGuiCol_Button, RedButtonColor );
+				ImGui::PushStyleColor( ImGuiCol_ButtonHovered, RedButtonHoveredColor );
+				ImGui::PushStyleColor( ImGuiCol_ButtonActive,  RedButtonActiveColor );
 
 				ImGui::Indent();
-				if ( ImGui::Button( idStr::Format( "Clear all" ) ) ) {
+				if ( ImGui::Button( idStr::Format( "Unbind all" ) ) ) {
 					selState = BESS_WantClear;
 					selectedColumn = 0;
 				} else {
-					ImGui::SetItemTooltip( "Clear all keybindings of %s", displayName.c_str() );
+					ImGui::SetItemTooltip( "Remove all keybindings for %s", displayName.c_str() );
 				}
 				ImGui::Unindent();
 				ImGui::PopStyleColor(3); // return to normal button color
@@ -405,63 +421,75 @@ struct BindingEntry {
 					highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
 				}
 
-				ImGui::Indent( ImGui::GetFontSize() * 0.5f );
+				ImGui::Indent( fontSize * 0.5f );
 
-				for ( int col = 1; col <= numBindings; ++col ) { // FIXME: don't call this col, in this menu it's rows..
-					ImGui::TableNextRow(); // 0, framePad.y + fontSize );
+				for ( int bnd = 1; bnd <= numBindings; ++bnd ) {
+					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex( 0 );
 
-					ImGui::PushID( col ); // the buttons have the same names in every row, so push the row number as ID
+					ImGui::PushID( bnd ); // the buttons have the same names in every row, so push the row number as ID
 
-					//bool selected = (oldSelState != BESS_NotSelected) && (selectedColumn == col || selectedColumn == 0);
-					bool colHasBinding = bindings[col-1].keyNum != -1;
-					const char* keyName = colHasBinding ? bindings[col-1].keyName.c_str() : "";
+					bool colHasBinding = bindings[bnd-1].keyNum != -1;
+					const char* keyName = "";
 
 					if ( colHasBinding ) {
+						keyName = bindings[bnd-1].keyName.c_str();
 						ImGui::AlignTextToFramePadding();
 						ImGui::TextUnformatted( keyName );
-						AddTooltip( bindings[col-1].internalKeyName.c_str() );
+						AddTooltip( bindings[bnd-1].internalKeyName.c_str() );
 					}
 
-					if ( selectedColumn == col || selectedColumn == 0 ) {
+					if ( /* selectedColumn == bnd || */ selectedColumn == 0 ) {
 						ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
 					}
 
 					ImGui::TableNextColumn();
+					//ImGui::SetCursorPosX( ImGui::GetCursorPosX() + fontSize*0.5f );
 					if ( colHasBinding ) {
 						if ( ImGui::Button( "Rebind" ) ) {
 							selState = BESS_WantBind;
-							selectedColumn = col;
+							selectedColumn = bnd;
 						} else {
 							ImGui::SetItemTooltip( "Unbind '%s' and bind another key to %s", keyName, displayName.c_str() );
 						}
 						ImGui::SameLine();
-						if ( ImGui::Button( "Clear" ) ) {
+						ImGui::SetCursorPosX( ImGui::GetCursorPosX() + fontSize*0.5f );
+						if ( ImGui::Button( "Unbind" ) ) {
 							selState = BESS_WantClear;
-							selectedColumn = col;
+							selectedColumn = bnd;
 						} else {
 							ImGui::SetItemTooltip( "Unbind key '%s' from %s", keyName, displayName.c_str() );
 						}
 					} else {
 						if ( ImGui::Button( "Bind" ) ) {
 							selState = BESS_WantBind;
-							selectedColumn = col;
+							selectedColumn = bnd;
 						} else {
 							ImGui::SetItemTooltip( "Set a keybinding for %s", displayName.c_str() );
 						}
 					}
 
-					ImGui::PopID(); // col
+					ImGui::PopID(); // bnd
 				}
+
 				ImGui::EndTable();
 
-				ImGui::Indent();
-				if ( ImGui::Button( "Add bind ..." ) ) {
+				//ImGui::TableNextRow();
+				//ImGui::TableSetColumnIndex( 1 );
+				const char* addBindButtonLabel = (numBindings == 0) ? "Bind a key" : "Bind another key";
+				float buttonWidth = ImGui::CalcTextSize(addBindButtonLabel).x + 2.0f * ImGui::GetStyle().FramePadding.x;
+				ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonWidth);
+
+				if ( ImGui::Button( addBindButtonLabel ) ) {
 					selState = BESS_WantBind;
 					selectedColumn = 0;
 				} else {
-					ImGui::SetItemTooltip( "Add another keybinding for %s", displayName.c_str() );
+					ImGui::SetItemTooltip( "Add %s keybinding for %s",
+										   (numBindings == 0) ? "a" : "another",
+										   displayName.c_str() );
 				}
+
+				//ImGui::EndTable();
 			}
 		}
 		ImGui::End();
@@ -479,7 +507,7 @@ struct BindingEntry {
 		} else {
 			ImGui::PushID( command );
 
-			ImGui::TableNextRow( 0, ImGui::GetFrameHeightWithSpacing() ) ; //, ImGui::GetFrameHeight() );
+			ImGui::TableNextRow( 0, ImGui::GetFrameHeightWithSpacing() );
 			ImGui::TableSetColumnIndex( 0 );
 			ImGui::AlignTextToFramePadding();
 
@@ -522,35 +550,51 @@ struct BindingEntry {
 				}
 			}
 
-			// TODO: show that button for the all bindings menu for all commands,
-			//   with different color for those that really have more bindings?
-			if ( numBindings > numBindingColumns ) {
-				ImGui::TableSetColumnIndex( numBindingColumns + 1 );
-
-				static int  showAllBindingsMenuRowNum = -1;
-				bool thisBindingEntryWasSelected = (showAllBindingsMenuRowNum == bindRowNum);
-
-				if ( thisBindingEntryWasSelected ) {
+			ImGui::TableSetColumnIndex( numBindingColumns + 1 );
+			// the last column contains a "++" button that opens a window that lists all bindings
+			// for this rows command (including ones not listed in the table because of lack of columns)
+			// if there actually are more bindings than columns, the button is red, else it has the default color
+			// clicking the button again will close the window, and the buttons color depends on whether
+			// its window is open or not. only one such window can be open at at time, clicking the
+			// button in another row closes the current window and opens a new one
+			static int  showAllBindingsMenuRowNum = -1;
+			bool allBindWinWasOpen = (showAllBindingsMenuRowNum == bindRowNum);
+			int styleColorsToPop = 0;
+			if ( numBindings <= numBindingColumns ) {
+				if ( allBindWinWasOpen ) {
 					// if the all bindings menu/window is showed for this entry,
 					// the button is "active" => switch its normal and hovered colors
 					ImVec4 btnColor = ImGui::GetStyleColorVec4( ImGuiCol_ButtonHovered );
 					ImGui::PushStyleColor( ImGuiCol_ButtonHovered, ImGui::GetStyleColorVec4(ImGuiCol_Button) );
 					ImGui::PushStyleColor( ImGuiCol_Button, btnColor );
+					styleColorsToPop = 2;
 				}
+			} else { // more bindings than can be shown in the table => make ++ button red
+				ImGui::PushStyleColor( ImGuiCol_Button, allBindWinWasOpen ? RedButtonHoveredColor : RedButtonColor );
+				ImGui::PushStyleColor( ImGuiCol_ButtonHovered, allBindWinWasOpen ? RedButtonColor : RedButtonHoveredColor );
+				ImGui::PushStyleColor( ImGuiCol_ButtonActive, RedButtonActiveColor );
+				styleColorsToPop = 3;
+			}
 
-				if ( ImGui::Button( "++" ) ) { // TODO: ImGui::ArrowButton() ?
-					showAllBindingsMenuRowNum = thisBindingEntryWasSelected ? -1 : bindRowNum;
-				}
+			if ( ImGui::Button( "++" ) ) {
+				showAllBindingsMenuRowNum = allBindWinWasOpen ? -1 : bindRowNum;
+				/*if ( showAllBindingsMenuRowNum != -1 ) {
+					ImGui::SetNextWindowFocus();
+				}*/
+			}
+			if ( numBindings > numBindingColumns ) {
 				ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show all its bindings.", displayName.c_str() );
+			} else {
+				ImGui::SetItemTooltip( "Show all bindings for %s in a list", displayName.c_str() );
+			}
 
-				if ( thisBindingEntryWasSelected ) {
-					ImGui::PopStyleColor(2); // restore button colors
-				}
+			if ( styleColorsToPop > 0 ) {
+				ImGui::PopStyleColor( styleColorsToPop ); // restore button colors
+			}
 
-				if ( showAllBindingsMenuRowNum == bindRowNum ) {
-					if ( !DrawAllBindingsWindow( newSelState ) ) {
-						showAllBindingsMenuRowNum = -1;
-					}
+			if ( showAllBindingsMenuRowNum == bindRowNum ) {
+				if ( !DrawAllBindingsWindow( newSelState ) ) {
+					showAllBindingsMenuRowNum = -1;
 				}
 			}
 
@@ -956,12 +1000,11 @@ static void DrawBindingsMenu()
 	bool lastBeginTable = true;
 	int tableNum = 1;
 
-	//float overFlowColumnT = ImGui::CalcTextSize( "++" ).x;
 	const ImVec2 defFramePadding = ImGui::GetStyle().FramePadding;
 	const float commandColumnWidth = ImGui::CalcTextSize( "dhewm3 settings menu" ).x;
-	const float overflowColumnWidth = ImGui::CalcTextSize( "++" ).x + 10.0f;
+	const float overflowColumnWidth = ImGui::CalcTextSize( "++" ).x + defFramePadding.x * 2.0f;
 
-	const int numBindingEntries = IM_ARRAYSIZE(bindingEntries);
+	const int numBindingEntries = IM_ARRAYSIZE(bindingEntries); // FIXME: adjust for doom3
 	for ( int i=0; i < numBindingEntries; ++i ) {
 		BindingEntry& be = bindingEntries[i];
 		bool isHeading = be.IsHeading();
@@ -982,7 +1025,7 @@ static void DrawBindingsMenu()
 					ImGui::TableSetupColumn( colName );
 				}
 
-				ImGui::TableSetupColumn( "More", ImGuiTableColumnFlags_WidthFixed, overflowColumnWidth );
+				ImGui::TableSetupColumn( "ShowAll", ImGuiTableColumnFlags_WidthFixed, overflowColumnWidth );
 			}
 		} else if ( isHeading && inTable ) {
 			// we've been adding elements to a table (unless lastBeginTable = false) that hasn't
