@@ -11,7 +11,10 @@
 // **Prefer using the code in the example_sdl2_opengl3/ folder**
 // See imgui_impl_sdl2.cpp for details.
 
+#define IMGUI_DEFINE_MATH_OPERATORS
+
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_impl_sdl2.h"
 #include "imgui_impl_opengl2.h"
 #include <stdio.h>
@@ -373,34 +376,43 @@ struct BindingEntry {
 		}
 	}
 
-	bool DrawAllBindingsWindow( /* in+out */ BindingEntrySelectionState& selState )
+	bool DrawAllBindingsWindow( /* in+out */ BindingEntrySelectionState& selState, bool firstOpen, const ImVec2& btnMin, const ImVec2& btnMax )
 	{
 		bool showThisMenu = true;
 		idStr menuWinTitle = idStr::Format( "All keys bound to %s###allBindingsWindow", displayName.c_str() );
+		//idStr menuWinTitle = idStr::Format( "All keys bound to %s", displayName.c_str() );
 		int numBindings = bindings.size();
 
 		ImGuiWindowFlags menuWinFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings; // | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
 		const float fontSize = ImGui::GetFontSize();
 		ImVec2 winMinSize = ImGui::CalcTextSize( menuWinTitle, nullptr, true );
 		winMinSize.x += fontSize * 2.0f;
-		ImVec2 maxWinSize = ImGui::GetMainViewport()->WorkSize;
-		maxWinSize.y *= 0.9f;
+		const ImGuiViewport& viewPort = *ImGui::GetMainViewport();
+		ImVec2 maxWinSize( viewPort.WorkSize.x, viewPort.WorkSize.y * 0.9f );
 		// make sure the window is big enough to show the full title (incl. displayName)
 		// and that it fits into the screen (it can scroll if it gets too long)
 		ImGui::SetNextWindowSizeConstraints( winMinSize, maxWinSize );
 
-		// TODO: use BeginPopup() instead?
-		if ( ImGui::Begin( menuWinTitle, &showThisMenu, menuWinFlags ) ) {
+		static ImVec2 winPos;
+		if ( firstOpen ) {
+			winPos = btnMin;
+			winPos.x = btnMax.x + ImGui::GetStyle().ItemInnerSpacing.x;
+			ImGui::OpenPopup( menuWinTitle );
+			ImGui::SetNextWindowPos(winPos);
+		}
+
+		if ( ImGui::Begin( menuWinTitle, &showThisMenu, menuWinFlags ) )
+		{
+			//ImGui::TextUnformatted( menuWinTitle );
 
 			ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
-
-			if ( ImGui::BeginTable( "AllBindingsForCommand", 2, tableFlags ) ) {
+			if ( numBindings > 0 && ImGui::BeginTable( "AllBindingsForCommand", 2, tableFlags ) ) {
 				ImGui::TableSetupColumn("command", ImGuiTableColumnFlags_WidthStretch);
 				ImGui::TableSetupColumn("buttons", ImGuiTableColumnFlags_WidthFixed);
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex( 0 );
 
-				// turn the next button red
+				// turn the next button (Unbind all) red
 				ImGui::PushStyleColor( ImGuiCol_Button, RedButtonColor );
 				ImGui::PushStyleColor( ImGuiCol_ButtonHovered, RedButtonHoveredColor );
 				ImGui::PushStyleColor( ImGuiCol_ButtonActive,  RedButtonActiveColor );
@@ -473,23 +485,50 @@ struct BindingEntry {
 				}
 
 				ImGui::EndTable();
+			}
 
-				//ImGui::TableNextRow();
-				//ImGui::TableSetColumnIndex( 1 );
-				const char* addBindButtonLabel = (numBindings == 0) ? "Bind a key" : "Bind another key";
-				float buttonWidth = ImGui::CalcTextSize(addBindButtonLabel).x + 2.0f * ImGui::GetStyle().FramePadding.x;
-				ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonWidth);
+			const char* addBindButtonLabel = (numBindings == 0) ? "Bind a key" : "Bind another key";
+			float buttonWidth = ImGui::CalcTextSize(addBindButtonLabel).x + 2.0f * ImGui::GetStyle().FramePadding.x;
+			ImGui::SetCursorPosX(ImGui::GetContentRegionMax().x - buttonWidth);
 
-				if ( ImGui::Button( addBindButtonLabel ) ) {
-					selState = BESS_WantBind;
-					selectedColumn = 0;
-				} else {
-					ImGui::SetItemTooltip( "Add %s keybinding for %s",
-										   (numBindings == 0) ? "a" : "another",
-										   displayName.c_str() );
+			if ( ImGui::Button( addBindButtonLabel ) ) {
+				selState = BESS_WantBind;
+				selectedColumn = 0;
+			} else {
+				ImGui::SetItemTooltip( "Add %s keybinding for %s",
+									   (numBindings == 0) ? "a" : "another",
+									   displayName.c_str() );
+			}
+
+			ImVec2 winSize = ImGui::GetWindowSize();
+			ImRect winRect;
+			winRect.Min = ImGui::GetWindowPos();
+			winRect.Max = winRect.Min + winSize;
+			ImRect workRect(viewPort.WorkPos, viewPort.WorkPos + viewPort.WorkSize);
+			//printf("win size: (%.2f %.2f) pos: (%.2f %.2f)\n", winSize.x, winSize.y, winPos.x, winPos.y);
+			//printf("work (%.2f %.2f) to (%.2f %.2f)\n", workRect.Min.x, workRect.Min.y, workRect.Max.x, workRect.Max.y);
+
+			if ( !workRect.Contains(winRect) ) {
+
+				ImRect r_avoid( btnMin, btnMax );
+				r_avoid.Expand( ImGui::GetStyle().ItemInnerSpacing );
+
+				//printf(" winsize: (%.2f %.2f) pos: (%.2f %.2f)\n", winSize.x, winSize.y, winPos.x, winPos.y);
+				ImGuiDir dir = ImGuiDir_Right;
+				ImVec2 newWinPos = ImGui::FindBestWindowPosForPopupEx( ImVec2(btnMin.x, btnMax.y), winSize, &dir, workRect, r_avoid, ImGuiPopupPositionPolicy_Default );
+				ImVec2 posDiff = newWinPos - winPos;
+				if ( fabsf(posDiff.x) > 2.0f || fabsf(posDiff.y) > 2.0f ) {
+					//printf("work (%.2f %.2f) to (%.2f %.2f)\n", workRect.Min.x, workRect.Min.y, workRect.Max.x, workRect.Max.y);
+					//printf("win (%.2f %.2f) to (%.2f %.2f)\n", winRect.Min.x, winRect.Min.y, winRect.Max.x, winRect.Max.y);
+					//printf("avoid (%.2f %.2f) to (%.2f %.2f)\n", r_avoid.Min.x, r_avoid.Min.y, r_avoid.Max.x, r_avoid.Max.y);
+					winPos = newWinPos;
+					ImGui::SetWindowPos( newWinPos );
+					//printf("setwindowpos( %.2f %.2f )\n", winPos.x, winPos.y);
 				}
+			}
 
-				//ImGui::EndTable();
+			if ( ImGui::IsWindowFocused() && IsCancelKeyPressed() ) {
+				showThisMenu = false;
 			}
 		}
 		ImGui::End();
@@ -576,12 +615,14 @@ struct BindingEntry {
 				styleColorsToPop = 3;
 			}
 
+			// TODO: close the window if another row has been selected (or used to create/delete a binding or whatever)?
+			bool newOpen = false;
 			if ( ImGui::Button( "++" ) ) {
 				showAllBindingsMenuRowNum = allBindWinWasOpen ? -1 : bindRowNum;
-				/*if ( showAllBindingsMenuRowNum != -1 ) {
-					ImGui::SetNextWindowFocus();
-				}*/
+				newOpen = true;
 			}
+			ImVec2 btnMin = ImGui::GetItemRectMin();
+			ImVec2 btnMax = ImGui::GetItemRectMax();
 			if ( numBindings > numBindingColumns ) {
 				ImGui::SetItemTooltip( "There are additional bindings for %s.\nClick here to show all its bindings.", displayName.c_str() );
 			} else {
@@ -593,7 +634,7 @@ struct BindingEntry {
 			}
 
 			if ( showAllBindingsMenuRowNum == bindRowNum ) {
-				if ( !DrawAllBindingsWindow( newSelState ) ) {
+				if ( !DrawAllBindingsWindow( newSelState, newOpen, btnMin, btnMax ) ) {
 					showAllBindingsMenuRowNum = -1;
 				}
 			}
@@ -640,7 +681,7 @@ struct BindingEntry {
 			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
 			ImGui::NewLine();
 
-			// center the Ok and Cancel buttons; 20 (20 is the space added between them)
+			// center the Ok and Cancel buttons
 			float dialogButtonWidth = CalcDialogButtonWidth();
 			float spaceBetweenButtons = ImGui::GetFontSize();
 			float buttonOffset = (ImGui::GetWindowWidth() - 2.0f*dialogButtonWidth - spaceBetweenButtons) * 0.5f;
@@ -858,7 +899,7 @@ struct BindingEntry {
 			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
 			ImGui::NewLine();
 
-			// center the Ok and Cancel buttons; 20 is the space added between them
+			// center the Ok and Cancel buttons
 			float dialogButtonWidth = CalcDialogButtonWidth();
 			float spaceBetweenButtons = ImGui::GetFontSize();
 			float buttonOffset = (ImGui::GetWindowWidth() - 2.0f*dialogButtonWidth - spaceBetweenButtons) * 0.5f;
