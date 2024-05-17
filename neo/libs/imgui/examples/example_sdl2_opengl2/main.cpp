@@ -178,7 +178,7 @@ const char* GetKeyName( int keyNum, bool localized = true )
 {
 	if( keyNum <= 0 )
 		return "<none>";
-	// TODO: use idKeyInput::KeyNumToString(keyNum, localized) instead
+	// TODO: use Doom3's idKeyInput::KeyNumToString(keyNum, localized) instead
 	if ( localized ) {
 		return ImGui::GetKeyName( (ImGuiKey)keyNum );
 	} else {
@@ -226,6 +226,13 @@ struct BoundKey {
 		internalKeyName = GetKeyName( _keyNum, false );
 	}
 
+	void Clear()
+	{
+		keyNum = -1;
+		keyName = "";
+		internalKeyName = "";
+	}
+
 	BoundKey() = default;
 
 	BoundKey ( int _keyNum ) {
@@ -236,7 +243,7 @@ struct BoundKey {
 
 struct BindingEntry;
 static BindingEntry* FindBindingEntryForKey( int keyNum );
-static int numBindingColumns = 4; // TODO: in real code, save in CVar (in_maxBindingsPerCommand or sth)
+static int numBindingColumns = 4; // TODO: in Doom3, save in CVar (in_maxBindingsPerCommand or sth)
 
 static int rebindKeyNum = -1; // only used for HandleRebindPopup()
 static BindingEntry* rebindOtherEntry = nullptr; // ditto
@@ -307,12 +314,14 @@ struct BindingEntry {
 				} else if ( IsBindNowKeyPressed() ) {
 					// FIXME: if a column is already selected, that should probably have precedence over the focus?
 					//        AT LEAST if it's column 0
+					// TODO: or unselect when something else is focused?
 					printf("focus bind now\n");
 					selState = BESS_WantBind;
 					selectedColumn = column;
 				} else if ( IsClearKeyPressed() ) {
 					// FIXME: if a column is already selected, that should probably have precedence over the focus?
 					//        AT LEAST if it's column 0
+					// TODO: or unselect when something else is focused?
 					printf("focus clear now\n");
 					bool nothingToClear = false;
 					if ( column == 0 ) {
@@ -361,7 +370,7 @@ struct BindingEntry {
 		}
 
 		// this column is selected => highlight it
-		if ( selState != BESS_NotSelected && selectedColumn == column && column <= numBindingColumns ) {
+		if ( selState != BESS_NotSelected && selectedColumn == column ) {
 			// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
 			// but ImGuiCol_HeaderHovered is more visible, IMO
 			ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
@@ -380,10 +389,9 @@ struct BindingEntry {
 	{
 		bool showThisMenu = true;
 		idStr menuWinTitle = idStr::Format( "All keys bound to %s###allBindingsWindow", displayName.c_str() );
-		//idStr menuWinTitle = idStr::Format( "All keys bound to %s", displayName.c_str() );
 		int numBindings = bindings.size();
 
-		ImGuiWindowFlags menuWinFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings; // | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize;
+		ImGuiWindowFlags menuWinFlags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings;
 		const float fontSize = ImGui::GetFontSize();
 		ImVec2 winMinSize = ImGui::CalcTextSize( menuWinTitle, nullptr, true );
 		winMinSize.x += fontSize * 2.0f;
@@ -403,8 +411,6 @@ struct BindingEntry {
 
 		if ( ImGui::Begin( menuWinTitle, &showThisMenu, menuWinFlags ) )
 		{
-			//ImGui::TextUnformatted( menuWinTitle );
-
 			ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg;
 			if ( numBindings > 0 && ImGui::BeginTable( "AllBindingsForCommand", 2, tableFlags ) ) {
 				ImGui::TableSetupColumn("command", ImGuiTableColumnFlags_WidthStretch);
@@ -451,12 +457,11 @@ struct BindingEntry {
 						AddTooltip( bindings[bnd-1].internalKeyName.c_str() );
 					}
 
-					if ( /* selectedColumn == bnd || */ selectedColumn == 0 ) {
+					if ( selectedColumn == 0 ) {
 						ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
 					}
 
 					ImGui::TableNextColumn();
-					//ImGui::SetCursorPosX( ImGui::GetCursorPosX() + fontSize*0.5f );
 					if ( colHasBinding ) {
 						if ( ImGui::Button( "Rebind" ) ) {
 							selState = BESS_WantBind;
@@ -505,25 +510,18 @@ struct BindingEntry {
 			winRect.Min = ImGui::GetWindowPos();
 			winRect.Max = winRect.Min + winSize;
 			ImRect workRect(viewPort.WorkPos, viewPort.WorkPos + viewPort.WorkSize);
-			//printf("win size: (%.2f %.2f) pos: (%.2f %.2f)\n", winSize.x, winSize.y, winPos.x, winPos.y);
-			//printf("work (%.2f %.2f) to (%.2f %.2f)\n", workRect.Min.x, workRect.Min.y, workRect.Max.x, workRect.Max.y);
 
 			if ( !workRect.Contains(winRect) ) {
 
 				ImRect r_avoid( btnMin, btnMax );
 				r_avoid.Expand( ImGui::GetStyle().ItemInnerSpacing );
 
-				//printf(" winsize: (%.2f %.2f) pos: (%.2f %.2f)\n", winSize.x, winSize.y, winPos.x, winPos.y);
 				ImGuiDir dir = ImGuiDir_Right;
 				ImVec2 newWinPos = ImGui::FindBestWindowPosForPopupEx( ImVec2(btnMin.x, btnMax.y), winSize, &dir, workRect, r_avoid, ImGuiPopupPositionPolicy_Default );
 				ImVec2 posDiff = newWinPos - winPos;
 				if ( fabsf(posDiff.x) > 2.0f || fabsf(posDiff.y) > 2.0f ) {
-					//printf("work (%.2f %.2f) to (%.2f %.2f)\n", workRect.Min.x, workRect.Min.y, workRect.Max.x, workRect.Max.y);
-					//printf("win (%.2f %.2f) to (%.2f %.2f)\n", winRect.Min.x, winRect.Min.y, winRect.Max.x, winRect.Max.y);
-					//printf("avoid (%.2f %.2f) to (%.2f %.2f)\n", r_avoid.Min.x, r_avoid.Min.y, r_avoid.Max.x, r_avoid.Max.y);
 					winPos = newWinPos;
 					ImGui::SetWindowPos( newWinPos );
-					//printf("setwindowpos( %.2f %.2f )\n", winPos.x, winPos.y);
 				}
 			}
 
@@ -634,6 +632,7 @@ struct BindingEntry {
 			}
 
 			if ( showAllBindingsMenuRowNum == bindRowNum ) {
+				ImGui::SetNextWindowBgAlpha( 1.0f );
 				if ( !DrawAllBindingsWindow( newSelState, newOpen, btnMin, btnMax ) ) {
 					showAllBindingsMenuRowNum = -1;
 				}
@@ -705,9 +704,7 @@ struct BindingEntry {
 					selectedColumn = 1;
 				} else {
 					Unbind( bindings[selectedBinding].keyNum );
-
-					bindings[selectedBinding].keyNum = -1;
-					bindings[selectedBinding].keyName = "";
+					bindings[selectedBinding].Clear();
 				}
 
 				ImGui::CloseCurrentPopup();
@@ -1012,17 +1009,48 @@ static BindingEntry* FindBindingEntryForKey( int keyNum )
 
 static void DrawBindingsMenu()
 {
-	ImGui::PushItemWidth(70.0f); // TODO: somehow dependent on font size and/or scale or something
-	ImGui::InputInt( "Number of Binding columns to show", &numBindingColumns );
-	numBindingColumns = idMath::ClampInt( 1, 10, numBindingColumns );
-	ImGui::PopItemWidth();
-
 	{
+		// the InputInt will look kinda like this:
+		// [10] [-] [+] Number of Bin...
+		// the [-] and [+] buttons have size GetFrameHeight()^2
+		// calculate the width it needs (without the "Number of ..." text)
+		// for the text input field not too look too big
+		const ImGuiStyle& st = ImGui::GetStyle();
+		float w = ImGui::CalcTextSize("10").x;
+		w += 2.0f * (ImGui::GetFrameHeight() + st.FramePadding.x + st.ItemInnerSpacing.x);
+		ImGui::SetNextItemWidth(w);
+
+		ImGui::InputInt( "Number of Binding columns to show", &numBindingColumns );
+
+		numBindingColumns = idMath::ClampInt( 1, 10, numBindingColumns );
+
 		// calculate the background color for the first column of the key binding tables
 		// (it contains the command, while the other columns contain the keys bound to that command)
 		ImVec4 bgColor = ImGui::GetStyleColorVec4( ImGuiCol_TableHeaderBg );
 		bgColor.w = 0.5f;
 		displayNameBGColor = ImGui::GetColorU32( bgColor );
+
+
+		if ( ImGui::TreeNode("Usage Help") ) {
+			AddTooltip( "Click to hide help text" );
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+			const char* gamepadBindNowButton = "<TODO: gamepad button for bind now (probably A or south)>";
+			const char* gamepadDeleteNowButton = "<TODO: gamepad delete button>";
+			const char* gamepadCancelButton = "<TODO: gamepad start button>";
+			ImGui::TextWrapped( "Double click a keybinding below entry to bind a (different) key, or select it by clicking it once or navigating to it with cursor keys or gamepad and pressing Enter (or gamepad %s) to change its (re)bind it.",
+			                    gamepadBindNowButton );
+			ImGui::TextWrapped( "Remove a key binding (unbind) by selecting it and pressing Backspace, Delete or %s.",
+			                    gamepadDeleteNowButton );
+			ImGui::TextWrapped( "If you select the first column (with the command name), you can unbind all keybindings for that command, or add another keybinding for it without overwriting an existing one." );
+			ImGui::TextWrapped( "You can unselect the currently selected binding by clicking it again or by pressing Escape or gamepad %s.",
+			                    gamepadCancelButton );
+			ImGui::TextWrapped( "The [++] button on the right opens (or closes) a window that shows all keys bound to the corresponding command (even if it's more than the amount of binding columns) and has buttons to configure them. It's red when there actually are more key bound than can be shown in the columns of this window." );
+
+			ImGui::PopStyleColor(); // ImGuiCol_Text
+			ImGui::TreePop();
+		} else {
+			AddTooltip( "Click to show help text" );
+		}
 	}
 
 	static int selectedRow = -1;
@@ -1092,6 +1120,11 @@ static void DrawBindingsMenu()
 	if ( inTable && lastBeginTable ) {
 		// end the last binding table, if any
 		ImGui::EndTable();
+	}
+
+	if ( ImGui::IsWindowFocused() && IsCancelKeyPressed() ) {
+		// pressing Escape unfocuses whatever entry is focused
+		selectedRow = -1;
 	}
 
 	ImGui::PopStyleVar(); // ImGuiStyleVar_SelectableTextAlign
