@@ -253,7 +253,17 @@ struct BindingEntry {
 	idStr displayName;
 	const char* description = nullptr;
 	std::vector<BoundKey> bindings;
-	int selectedColumn = -1;
+	enum {
+		BIND_NONE   = -1, // no binding currently selected
+		// all are selected (clicked command name column): clear all,
+		//   or add a new binding in some visible column (idx in bindings < numBindingColumns)
+		BIND_ALL    = -2,
+		// append new binding at the end, or set it in unused bindings entry, if any (used by AllBindingsWindow)
+		BIND_APPEND = -3
+	};
+	// which binding is currently selected in the UI, if any (and only if this
+	//   binding entry is currently active according to Draw()'s oldSelState)
+	int selectedBinding = BIND_NONE; // index in bindings or one of the enum values
 
 	BindingEntry() = default;
 
@@ -291,7 +301,7 @@ struct BindingEntry {
 	}
 
 	// also updates this->selectedColumn
-	void UpdateSelectionState( int column, /* in+out */ BindingEntrySelectionState& selState )
+	void UpdateSelectionState( int bindIdx, /* in+out */ BindingEntrySelectionState& selState )
 	{
 		// if currently a popup is shown for creating a new binding or clearing one (BESS_WantBind
 		// or BESS_WantClear), everything is still rendered, but in a disabled (greyed out) state
@@ -302,45 +312,45 @@ struct BindingEntry {
 				//       so it's possible to select a command (or specific binding of a command)
 				//       with the mouse and then press Enter to (re)bind it or Delete to clear it
 				if ( IsSelectionKeyPressed() ) {
-					if ( selState == BESS_Selected && selectedColumn == column ) {
-						printf("focus unselect\n");
+					if ( selState == BESS_Selected && selectedBinding == bindIdx ) {
+						printf("focus unselect bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 						selState = BESS_NotSelected;
-						selectedColumn = -1;
+						selectedBinding = BIND_NONE;
 					} else {
-						printf("focus select\n");
+						printf("focus select bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 						selState = BESS_Selected;
-						selectedColumn = column;
+						selectedBinding = bindIdx;
 					}
 				} else if ( IsBindNowKeyPressed() ) {
 					// FIXME: if a column is already selected, that should probably have precedence over the focus?
 					//        AT LEAST if it's column 0
 					// TODO: or unselect when something else is focused?
-					printf("focus bind now\n");
+					printf("focus bind now bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 					selState = BESS_WantBind;
-					selectedColumn = column;
+					selectedBinding = bindIdx;
 				} else if ( IsClearKeyPressed() ) {
 					// FIXME: if a column is already selected, that should probably have precedence over the focus?
 					//        AT LEAST if it's column 0
 					// TODO: or unselect when something else is focused?
-					printf("focus clear now\n");
+					printf("focus clear now bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 					bool nothingToClear = false;
-					if ( column == 0 ) {
+					if ( bindIdx == BIND_ALL ) {
 						if ( bindings.size() == 0 ) {
 							ShowWarningTooltip( "No keys are bound to this command, so there's nothing to unbind" );
 							nothingToClear = true;
 						}
-					} else if ( (size_t)column > bindings.size() || bindings[column-1].keyNum == -1 ) {
+					} else if ( bindIdx < 0 || (size_t)bindIdx >= bindings.size() || bindings[bindIdx].keyNum == -1 ) {
 						ShowWarningTooltip( "No bound key selected for unbind" );
 						nothingToClear = true;
 					}
 
 					selState = nothingToClear ? BESS_Selected : BESS_WantClear;
-					selectedColumn = column;
+					selectedBinding = bindIdx;
 				}
 			}
 
 			if ( ImGui::IsItemHovered() ) {
-				if ( column == 0 ) {
+				if ( bindIdx == BIND_ALL ) {
 					// if the first column (command name, like "Move Left") is hovered, highlight the whole row
 					// A normal Selectable would use ImGuiCol_HeaderHovered, but I use that as the "selected"
 					// color (in Draw()), so use the next brighter thing (ImGuiCol_HeaderActive) here.
@@ -352,31 +362,31 @@ struct BindingEntry {
 				bool singleClicked = !doubleClicked && ImGui::IsMouseClicked( 0 );
 
 				if ( singleClicked ) {
-					if ( selState == BESS_Selected && selectedColumn == column ) {
-						printf("hover unselect\n");
+					if ( selState == BESS_Selected && selectedBinding == bindIdx ) {
+						printf("hover unselect bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 						selState = BESS_NotSelected;
-						selectedColumn = -1;
+						selectedBinding = BIND_NONE;
 					} else {
-						printf("hover select\n");
+						printf("hover select bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 						selState = BESS_Selected;
-						selectedColumn = column;
+						selectedBinding = bindIdx;
 					}
 				} else if ( doubleClicked ) {
-					printf("hover doubleclick\n");
+					printf("hover doubleclick bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 					selState = BESS_WantBind;
-					selectedColumn = column;
+					selectedBinding = bindIdx;
 				}
 			}
 		}
 
 		// this column is selected => highlight it
-		if ( selState != BESS_NotSelected && selectedColumn == column ) {
+		if ( selState != BESS_NotSelected && selectedBinding == bindIdx ) {
 			// ImGuiCol_Header would be the regular "selected cell/row" color that Selectable would use
 			// but ImGuiCol_HeaderHovered is more visible, IMO
 			ImU32 highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
 			ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
 
-			if ( column == 0 ) {
+			if ( bindIdx == BIND_ALL ) {
 				// the displayName column is selected => highlight the whole row
 				ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, highlightRowColor );
 				// (yes, still set the highlight color for ImGuiTableBgTarget_CellBg above for extra
@@ -426,7 +436,7 @@ struct BindingEntry {
 				ImGui::Indent();
 				if ( ImGui::Button( idStr::Format( "Unbind all" ) ) ) {
 					selState = BESS_WantClear;
-					selectedColumn = 0;
+					selectedBinding = BIND_ALL;
 				} else {
 					ImGui::SetItemTooltip( "Remove all keybindings for %s", displayName.c_str() );
 				}
@@ -435,29 +445,32 @@ struct BindingEntry {
 				ImGui::Spacing();
 
 				ImU32 highlightRowColor = 0;
-				if ( selectedColumn >= 0 ) {
+				if ( selectedBinding >= 0 || selectedBinding == BIND_ALL ) {
 					highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
 				}
 
 				ImGui::Indent( fontSize * 0.5f );
 
-				for ( int bnd = 1; bnd <= numBindings; ++bnd ) {
+				for ( int bnd = 0; bnd < numBindings; ++bnd ) {
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex( 0 );
 
 					ImGui::PushID( bnd ); // the buttons have the same names in every row, so push the row number as ID
 
-					bool colHasBinding = bindings[bnd-1].keyNum != -1;
+					bool colHasBinding = bindings[bnd].keyNum != -1;
 					const char* keyName = "";
 
 					if ( colHasBinding ) {
-						keyName = bindings[bnd-1].keyName.c_str();
+						keyName = bindings[bnd].keyName.c_str();
 						ImGui::AlignTextToFramePadding();
 						ImGui::TextUnformatted( keyName );
-						AddTooltip( bindings[bnd-1].internalKeyName.c_str() );
+						AddTooltip( bindings[bnd].internalKeyName.c_str() );
 					}
 
-					if ( selectedColumn == 0 ) {
+					if ( selectedBinding == BIND_ALL ) {
+						// if all bindings are selected from the binding table (for clear all),
+						// mark the whole first row here. otherwise, nothing is marked here,
+						// as in this window only the buttons are clickble, not the key cells
 						ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, highlightRowColor );
 					}
 
@@ -465,7 +478,7 @@ struct BindingEntry {
 					if ( colHasBinding ) {
 						if ( ImGui::Button( "Rebind" ) ) {
 							selState = BESS_WantBind;
-							selectedColumn = bnd;
+							selectedBinding = bnd;
 						} else {
 							ImGui::SetItemTooltip( "Unbind '%s' and bind another key to %s", keyName, displayName.c_str() );
 						}
@@ -473,14 +486,14 @@ struct BindingEntry {
 						ImGui::SetCursorPosX( ImGui::GetCursorPosX() + fontSize*0.5f );
 						if ( ImGui::Button( "Unbind" ) ) {
 							selState = BESS_WantClear;
-							selectedColumn = bnd;
+							selectedBinding = bnd;
 						} else {
 							ImGui::SetItemTooltip( "Unbind key '%s' from %s", keyName, displayName.c_str() );
 						}
 					} else {
 						if ( ImGui::Button( "Bind" ) ) {
 							selState = BESS_WantBind;
-							selectedColumn = bnd;
+							selectedBinding = bnd;
 						} else {
 							ImGui::SetItemTooltip( "Set a keybinding for %s", displayName.c_str() );
 						}
@@ -498,7 +511,7 @@ struct BindingEntry {
 
 			if ( ImGui::Button( addBindButtonLabel ) ) {
 				selState = BESS_WantBind;
-				selectedColumn = 0;
+				selectedBinding = BIND_APPEND;
 			} else {
 				ImGui::SetItemTooltip( "Add %s keybinding for %s",
 									   (numBindings == 0) ? "a" : "another",
@@ -555,9 +568,9 @@ struct BindingEntry {
 
 			// not really using the selectable feature, mostly making it selectable
 			// so keyboard/gamepad navigation works
-			ImGui::Selectable( "##0", false, 0 );
+			ImGui::Selectable( "##cmd", false, 0 );
 
-			UpdateSelectionState( 0, newSelState );
+			UpdateSelectionState( BIND_ALL, newSelState );
 
 			ImGui::SameLine();
 			ImGui::TextUnformatted( displayName );
@@ -569,21 +582,21 @@ struct BindingEntry {
 			}
 
 			int numBindings = bindings.size();
-			for ( int col=1; col <= numBindingColumns ; ++col ) {
-				ImGui::TableSetColumnIndex( col );
+			for ( int bnd=0; bnd < numBindingColumns ; ++bnd ) {
+				ImGui::TableSetColumnIndex( bnd+1 );
 
-				bool colHasBinding = (col <= numBindings) && bindings[col-1].keyNum != -1;
+				bool colHasBinding = (bnd < numBindings) && bindings[bnd].keyNum != -1;
 				char selTxt[128];
 				if ( colHasBinding ) {
-					snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[col-1].keyName.c_str(), col );
+					snprintf( selTxt, sizeof(selTxt), "%s###%d", bindings[bnd].keyName.c_str(), bnd );
 				} else {
-					snprintf( selTxt, sizeof(selTxt), "###%d", col );
+					snprintf( selTxt, sizeof(selTxt), "###%d", bnd );
 				}
 				ImGui::Selectable( selTxt, false, 0 );
-				UpdateSelectionState( col, newSelState );
+				UpdateSelectionState( bnd, newSelState );
 
 				if ( colHasBinding ) {
-					AddTooltip( bindings[col-1].internalKeyName.c_str() );
+					AddTooltip( bindings[bnd].internalKeyName.c_str() );
 				}
 			}
 
@@ -641,7 +654,7 @@ struct BindingEntry {
 			ImGui::PopID();
 
 			if ( newSelState == BESS_NotSelected ) {
-				selectedColumn = -1;
+				selectedBinding = BIND_NONE;
 			}
 			return newSelState;
 		}
@@ -665,11 +678,11 @@ struct BindingEntry {
 	BindingEntrySelectionState HandleClearPopup( const char* popupName )
 	{
 		BindingEntrySelectionState ret = BESS_WantClear;
-		int selectedBinding = selectedColumn - 1;
+		const int selectedBinding = this->selectedBinding;
 
 		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
 		{
-			if ( selectedColumn == 0 ) {
+			if ( selectedBinding == BIND_ALL ) {
 				ImGui::Text( "Clear all keybindings for %s ?", displayName.c_str() );
 			} else {
 				ImGui::Text( "Unbind key '%s' from command %s ?",
@@ -694,14 +707,14 @@ struct BindingEntry {
 				confirmedByKey = IsBindNowKeyPressed();
 			}
 			if ( ImGui::Button( "Ok", ImVec2(dialogButtonWidth, 0) ) || confirmedByKey ) {
-				if ( selectedColumn == 0 ) {
+				if ( selectedBinding == BIND_ALL ) {
 					for ( BoundKey& bk : bindings ) {
 						Unbind( bk.keyNum );
 					}
 					bindings.clear();
 					// don't select all columns after they have been cleared,
 					// instead only select the first, good point to add a new binding
-					selectedColumn = 1;
+					this->selectedBinding = 0;
 				} else {
 					Unbind( bindings[selectedBinding].keyNum );
 					bindings[selectedBinding].Clear();
@@ -727,32 +740,35 @@ struct BindingEntry {
 
 	void AddKeyBinding( int keyNum )
 	{
+		assert( selectedBinding != -1 );
 		Bind( keyNum );
 
 		int numBindings = bindings.size();
-		if ( selectedColumn == 0 ) {
+		if ( selectedBinding == BIND_ALL || selectedBinding == BIND_APPEND ) {
 			for ( int i=0; i < numBindings; ++i ) {
 				// if there's an empty column, use that
 				if ( bindings[i].keyNum == -1 ) {
 					bindings[i].Set( keyNum );
 					// select the column this was inserted into
-					// (+1 because of the first column with displayName)
-					selectedColumn = i + 1;
+					selectedBinding = i;
+
 					return;
 				}
 			}
-			if ( numBindings < numBindingColumns ) { // TODO: or if we're in the all bindings menu
+			if ( numBindings < numBindingColumns || selectedBinding == BIND_APPEND ) {
+				// just append an entry to bindings
 				bindings.push_back( BoundKey(keyNum) );
-				selectedColumn = numBindings + 1;
+				selectedBinding = numBindings;
 			} else {
-				// insert in last column (but don't remove any elements from bindings!)
+				// insert in last column of table so it's visible
+				// (but don't remove any elements from bindings!)
 				auto it = bindings.cbegin(); // I fucking hate STL.
 				it += (numBindingColumns-1);
 				bindings.insert( it, BoundKey(keyNum) );
-				selectedColumn = numBindingColumns;
+				selectedBinding = numBindingColumns-1;
 			}
 		} else {
-			int selectedBinding = selectedColumn - 1;
+			int selectedBinding = this->selectedBinding;
 			assert( selectedBinding >= 0 );
 			if ( selectedBinding < numBindings ) {
 				Unbind( bindings[selectedBinding].keyNum );
@@ -789,7 +805,8 @@ struct BindingEntry {
 	BindingEntrySelectionState HandleBindPopup( const char* popupName, bool firstOpen )
 	{
 		BindingEntrySelectionState ret = BESS_WantBind;
-		int selectedBinding = selectedColumn - 1;
+		const int selectedBinding = this->selectedBinding;
+		assert(selectedBinding == BIND_ALL || selectedBinding == BIND_APPEND || selectedBinding >= 0);
 
 		ImGuiIO& io = ImGui::GetIO();
 		// disable keyboard and gamepad input while the bind popup is open
@@ -797,7 +814,8 @@ struct BindingEntry {
 
 		if ( ImGui::BeginPopupModal( popupName, NULL, ImGuiWindowFlags_AlwaysAutoResize ) )
 		{
-			if ( selectedColumn == 0 || (size_t)selectedBinding >= bindings.size() || bindings[selectedBinding].keyNum == -1 ) {
+			if ( selectedBinding < 0 || selectedBinding >= (int)bindings.size()
+			    || bindings[selectedBinding].keyNum == -1 ) {
 				// add a binding
 				ImGui::Text( "Press a key or button to bind to %s", displayName.c_str() );
 			} else {
@@ -851,6 +869,7 @@ struct BindingEntry {
 				}
 
 				if ( pressedKey != ImGuiKey_None ) {
+					// FIXME: also check if it's bound to some other (custom) Doom3 command
 					BindingEntry* oldBE = FindBindingEntryForKey( pressedKey );
 					if ( oldBE == nullptr ) {
 						// that key isn't bound yet, hooray!
@@ -865,7 +884,7 @@ struct BindingEntry {
 						ret = BESS_Selected;
 						// TODO: select column with that specific binding?
 					} else {
-						// that key is already bound to some other command, show confirmation popup :-/
+						// that key is already bound to some other command, show confirmation popup
 						// FIXME: must also handle the case that it's binding to some command that is *not* handled by the menu
 						rebindKeyNum = pressedKey;
 						rebindOtherEntry = oldBE;
@@ -939,17 +958,21 @@ struct BindingEntry {
 
 	void HandlePopup( BindingEntrySelectionState& selectionState )
 	{
-		assert(selectedColumn >= 0);
+		// TODO: turn selectedColumn into selectedBinding, use -1 for "none", -2 (instead of 0) for "all", -3 for "append" (for new binding)
+
+		assert(selectedBinding != BIND_NONE);
 		const char* popupName = nullptr;
 
 		if ( selectionState == BESS_WantClear ) {
-			if ( bindings.size() == 0 || (size_t)selectedColumn > bindings.size() ||  bindings[selectedColumn-1].keyNum == -1 ) {
+			if ( bindings.size() == 0 || selectedBinding >= (int)bindings.size()
+			    || ( selectedBinding < 0 && selectedBinding != BIND_ALL )
+			    || ( selectedBinding >= 0 && bindings[selectedBinding].keyNum == -1 ) ) {
 				// there are no bindings at all for this command, or at least not in the selected column
 				// => don't show popup, but keep the cell selected
 				selectionState = BESS_Selected;
 				return;
 			}
-			popupName = (selectedColumn == 0) ? "Unbind keys" : "Unbind key";
+			popupName = (selectedBinding == BIND_ALL) ? "Unbind keys" : "Unbind key";
 		} else if ( selectionState == BESS_WantBind ) {
 			popupName = "Bind key";
 		} else {
