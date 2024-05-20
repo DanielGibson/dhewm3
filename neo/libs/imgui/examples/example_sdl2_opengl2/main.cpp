@@ -113,13 +113,14 @@ static void AddDescrTooltip( const char* description )
 }
 
 // was there a key down or button (mouse/gamepad) down event this frame?
-// used to make the warning tooltip disappear
+// used to make the warning overlay disappear
 static bool hadKeyDownEvent = false;
 
 static idStr warningTooltipText;
 static double warningTooltipStartTime = -100.0;
+static ImVec2 warningTooltipStartPos;
 
-static void UpdateWarningTooltip()
+static float blaScale = 1.0f;
 
 static void UpdateWarningOverlay()
 {
@@ -153,22 +154,28 @@ static void UpdateWarningOverlay()
 		{20, 33} // dot
 	};
 
+	float iconScale = blaScale; // TODO: global scale also used for fontsize
+
 	ImVec2 offset = ImGui::GetWindowPos() + ImVec2(fontSize, fontSize);
 	for ( ImVec2& v : points ) {
+		v.x = roundf( v.x * iconScale );
+		v.y = roundf( v.y * iconScale );
 		v += offset;
 	}
 
 	ImVec2 dotPos = ImVec2(20, 33) + offset;
 
 	ImU32 color = ImGui::GetColorU32( ImVec4(0.1f, 0.1f, 0.1f, 1.0f) );
-	int flags = ImDrawFlags_RoundCornersAll | ImDrawFlags_Closed;
-	drawList->AddPolyline( points, 3, color, flags, 4.0f );
+	//drawList->AddPolyline( points, 3, color, ImDrawFlags_RoundCornersAll | ImDrawFlags_Closed,
+	//                       roundf( iconScale * 4.0f ) );
+	drawList->AddTriangle( points[0], points[1], points[2], color, roundf( iconScale * 4.0f ) );
 
-	drawList->AddPolyline( points+3, 2, color, 0, 3.0f );
+	drawList->AddPolyline( points+3, 2, color, 0, roundf( iconScale * 3.0f ) );
 
-	drawList->AddEllipseFilled( points[5], ImVec2(2, 2), color, 0, 6 );
+	float dotRadius = 2.0f * iconScale;
+	drawList->AddEllipseFilled( points[5], ImVec2(dotRadius, dotRadius), color, 0, 6 );
 
-	ImGui::Indent( 40 );
+	ImGui::Indent( 40.0f * iconScale );
 	ImGui::TextUnformatted( warningTooltipText.c_str() );
 
 	ImGui::End();
@@ -179,12 +186,6 @@ static void UpdateWarningOverlay()
 
 static void ShowWarningOverlay( const char* text )
 {
-#if 0
-	warningTooltipText  = " . \n";
-	warningTooltipText += "/!\\ ";
-	warningTooltipText += text;
-	warningTooltipText += "\n¯¯¯";
-#endif
 	warningTooltipText = text;
 	warningTooltipStartTime = ImGui::GetTime();
 	warningTooltipStartPos = ImGui::GetMousePos();
@@ -1244,13 +1245,13 @@ static void myWindow()
 {
 	ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
 
+	ImGui::SliderFloat( "blaScale", &blaScale, 0.1, 20.0, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
 	//ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
 	ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 
 	UpdateWarningOverlay();
 	DrawBindingsMenu();
-
-
 
 #if 0
 	static float f = 0.0f;
