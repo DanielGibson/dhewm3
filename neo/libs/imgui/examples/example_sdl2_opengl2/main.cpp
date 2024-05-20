@@ -112,31 +112,82 @@ static void AddDescrTooltip( const char* description )
 	}
 }
 
+// was there a key down or button (mouse/gamepad) down event this frame?
+// used to make the warning tooltip disappear
+static bool hadKeyDownEvent = false;
+
 static idStr warningTooltipText;
 static double warningTooltipStartTime = -100.0;
 
 static void UpdateWarningTooltip()
+
+static void UpdateWarningOverlay()
 {
 	double timeNow = ImGui::GetTime();
 	if ( timeNow - warningTooltipStartTime > 4.0f ) {
 		return;
 	}
-	// TODO: also hide if a key was pressed or maybe even if the mouse was moved (too much)?
 
-	// TODO: use overlay instead (see imgui overlay example) ?
-	ImGui::BeginTooltip();
-	// TODO: warning icon
+	// also hide if a key was pressed or maybe even if the mouse was moved (too much)
+	ImVec2 mdv = ImGui::GetMousePos() - warningTooltipStartPos; // Mouse Delta Vector
+	float mouseDelta = sqrtf( mdv.x * mdv.x + mdv.y * mdv.y );
+	const float fontSize = ImGui::GetFontSize();
+	if ( mouseDelta > fontSize * 4.0f || hadKeyDownEvent ) {
+		warningTooltipStartTime = -100.0f;
+		return;
+	}
 
+	ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+	ImGui::PushStyleColor( ImGuiCol_WindowBg, ImVec4(1.0f, 0.4f, 0.4f, 0.4f) );
+	float padSize = fontSize * 2.0f;
+	ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2(padSize, padSize) );
+
+	int winFlags = ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove
+			| ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize;
+	ImGui::Begin("WarningOverlay", NULL, winFlags);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	ImVec2 points[] = {
+		{0, 40}, {40, 40}, {20, 0}, // triangle
+		{20, 12}, {20, 28}, // line
+		{20, 33} // dot
+	};
+
+	ImVec2 offset = ImGui::GetWindowPos() + ImVec2(fontSize, fontSize);
+	for ( ImVec2& v : points ) {
+		v += offset;
+	}
+
+	ImVec2 dotPos = ImVec2(20, 33) + offset;
+
+	ImU32 color = ImGui::GetColorU32( ImVec4(0.1f, 0.1f, 0.1f, 1.0f) );
+	int flags = ImDrawFlags_RoundCornersAll | ImDrawFlags_Closed;
+	drawList->AddPolyline( points, 3, color, flags, 4.0f );
+
+	drawList->AddPolyline( points+3, 2, color, 0, 3.0f );
+
+	drawList->AddEllipseFilled( points[5], ImVec2(2, 2), color, 0, 6 );
+
+	ImGui::Indent( 40 );
 	ImGui::TextUnformatted( warningTooltipText.c_str() );
-	ImGui::EndTooltip();
+
+	ImGui::End();
+
+	ImGui::PopStyleVar(); // WindowPadding
+	ImGui::PopStyleColor(); // WindowBg
 }
 
-static void ShowWarningTooltip( const char* text )
+static void ShowWarningOverlay( const char* text )
 {
-	warningTooltipText = "!! ";
+#if 0
+	warningTooltipText  = " . \n";
+	warningTooltipText += "/!\\ ";
 	warningTooltipText += text;
+	warningTooltipText += "\n¯¯¯";
+#endif
+	warningTooltipText = text;
 	warningTooltipStartTime = ImGui::GetTime();
-	printf("warning: %s\n", text);
+	warningTooltipStartPos = ImGui::GetMousePos();
 }
 
 
@@ -300,6 +351,26 @@ struct BindingEntry {
 		// TODO: get bindings for command from Doom3
 	}
 
+	// only removes the entry from bindings, does *not* unbind!
+	void RemoveBindingEntry( unsigned idx )
+	{
+		if ( idx < bindings.size() ) {
+			auto it = bindings.begin();
+			it += idx;
+			bindings.erase( it );
+		}
+	}
+
+	// remove all entries from bindings that don't have a key set
+	void CompactBindings()
+	{
+		for ( int i = bindings.size() - 1; i >= 0; --i ) {
+			if ( bindings[i].keyNum == -1 ) {
+				RemoveBindingEntry( i );
+			}
+		}
+	}
+
 	// also updates this->selectedColumn
 	void UpdateSelectionState( int bindIdx, /* in+out */ BindingEntrySelectionState& selState )
 	{
@@ -336,11 +407,11 @@ struct BindingEntry {
 					bool nothingToClear = false;
 					if ( bindIdx == BIND_ALL ) {
 						if ( bindings.size() == 0 ) {
-							ShowWarningTooltip( "No keys are bound to this command, so there's nothing to unbind" );
+							ShowWarningOverlay( "No keys are bound to this command, so there's nothing to unbind" );
 							nothingToClear = true;
 						}
 					} else if ( bindIdx < 0 || (size_t)bindIdx >= bindings.size() || bindings[bindIdx].keyNum == -1 ) {
-						ShowWarningTooltip( "No bound key selected for unbind" );
+						ShowWarningOverlay( "No bound key selected for unbind" );
 						nothingToClear = true;
 					}
 
@@ -395,7 +466,7 @@ struct BindingEntry {
 		}
 	}
 
-	bool DrawAllBindingsWindow( /* in+out */ BindingEntrySelectionState& selState, bool firstOpen, const ImVec2& btnMin, const ImVec2& btnMax )
+	bool DrawAllBindingsWindow( /* in+out */ BindingEntrySelectionState& selState, bool newOpen, const ImVec2& btnMin, const ImVec2& btnMax )
 	{
 		bool showThisMenu = true;
 		idStr menuWinTitle = idStr::Format( "All keys bound to %s###allBindingsWindow", displayName.c_str() );
@@ -412,7 +483,7 @@ struct BindingEntry {
 		ImGui::SetNextWindowSizeConstraints( winMinSize, maxWinSize );
 
 		static ImVec2 winPos;
-		if ( firstOpen ) {
+		if ( newOpen ) {
 			winPos = btnMin;
 			winPos.x = btnMax.x + ImGui::GetStyle().ItemInnerSpacing.x;
 			ImGui::OpenPopup( menuWinTitle );
@@ -631,6 +702,7 @@ struct BindingEntry {
 			if ( ImGui::Button( "++" ) ) {
 				showAllBindingsMenuRowNum = allBindWinWasOpen ? -1 : bindRowNum;
 				newOpen = true;
+				CompactBindings();
 			}
 			ImVec2 btnMin = ImGui::GetItemRectMin();
 			ImVec2 btnMax = ImGui::GetItemRectMax();
@@ -648,6 +720,7 @@ struct BindingEntry {
 				ImGui::SetNextWindowBgAlpha( 1.0f );
 				if ( !DrawAllBindingsWindow( newSelState, newOpen, btnMin, btnMax ) ) {
 					showAllBindingsMenuRowNum = -1;
+					CompactBindings();
 				}
 			}
 
@@ -717,7 +790,14 @@ struct BindingEntry {
 					this->selectedBinding = 0;
 				} else {
 					Unbind( bindings[selectedBinding].keyNum );
-					bindings[selectedBinding].Clear();
+					if ( selectedBinding == numBindingColumns - 1 ) {
+						// when removing the binding of the last column visible
+						// in the big binding table, remove that entry so
+						// the next one not visible there can take its place
+						RemoveBindingEntry( selectedBinding );
+					} else {
+						bindings[selectedBinding].Clear();
+					}
 				}
 
 				ImGui::CloseCurrentPopup();
@@ -796,8 +876,7 @@ struct BindingEntry {
 		}
 		if ( delPos != -1 ) {
 			Unbind( keyNum );
-			auto it = bindings.begin() + delPos;
-			bindings.erase( it );
+			RemoveBindingEntry( delPos );
 		}
 	}
 
@@ -880,7 +959,7 @@ struct BindingEntry {
 						const char* keyName = GetKeyName( pressedKey );
 						idStr warning = idStr::Format( "Key '%s' is already bound to this command (%s)!",
 						                               keyName, displayName.c_str() );
-						ShowWarningTooltip( warning );
+						ShowWarningOverlay( warning );
 						ret = BESS_Selected;
 						// TODO: select column with that specific binding?
 					} else {
@@ -1060,7 +1139,7 @@ static void DrawBindingsMenu()
 			const char* gamepadBindNowButton = "<TODO: gamepad button for bind now (probably A or south)>";
 			const char* gamepadDeleteNowButton = "<TODO: gamepad delete button>";
 			const char* gamepadCancelButton = "<TODO: gamepad start button>";
-			ImGui::TextWrapped( "Double click a keybinding below entry to bind a (different) key, or select it by clicking it once or navigating to it with cursor keys or gamepad and pressing Enter (or gamepad %s) to change its (re)bind it.",
+			ImGui::TextWrapped( "Double click a keybinding entry below to bind a (different) key, or select it by clicking it once or navigating to it with cursor keys or gamepad and pressing Enter (or gamepad %s) to (re)bind it.",
 			                    gamepadBindNowButton );
 			ImGui::TextWrapped( "Remove a key binding (unbind) by selecting it and pressing Backspace, Delete or %s.",
 			                    gamepadDeleteNowButton );
@@ -1168,8 +1247,8 @@ static void myWindow()
 	//ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
 	ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
 
+	UpdateWarningOverlay();
 	DrawBindingsMenu();
-	UpdateWarningTooltip();
 
 
 
@@ -1278,6 +1357,7 @@ int main(int, char**)
     bool done = false;
     while (!done)
     {
+        hadKeyDownEvent = false;
         // Poll and handle events (inputs, window resize, etc.)
         // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
         // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
@@ -1287,6 +1367,16 @@ int main(int, char**)
         while (SDL_PollEvent(&event))
         {
             ImGui_ImplSDL2_ProcessEvent(&event);
+            switch(event.type)
+            {
+                case SDL_MOUSEWHEEL:
+                case SDL_MOUSEBUTTONDOWN:
+                case SDL_KEYDOWN:
+                case SDL_CONTROLLERBUTTONDOWN:
+                // TODO: controller trigger?
+                    hadKeyDownEvent = true;
+            }
+
             if (event.type == SDL_QUIT)
                 done = true;
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
