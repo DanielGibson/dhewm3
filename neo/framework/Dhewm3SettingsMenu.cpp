@@ -219,7 +219,7 @@ struct BindingEntryTemplate {
 	const char* command;
 	const char* name;
 	const char* nameLocStr;
-	const char* description = nullptr;
+	const char* description;
 };
 
 struct BindingEntry {
