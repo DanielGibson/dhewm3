@@ -115,6 +115,8 @@ static void AddDescrTooltip( const char* description )
 // was there a key down or button (mouse/gamepad) down event this frame?
 // used to make the warning overlay disappear
 static bool hadKeyDownEvent = false;
+// for special case in IsCancelKeyPressed()
+static bool gamepadStartPressed = false;
 
 static idStr warningTooltipText;
 static double warningTooltipStartTime = -100.0;
@@ -163,8 +165,6 @@ static void UpdateWarningOverlay()
 		v += offset;
 	}
 
-	ImVec2 dotPos = ImVec2(20, 33) + offset;
-
 	ImU32 color = ImGui::GetColorU32( ImVec4(0.1f, 0.1f, 0.1f, 1.0f) );
 	//drawList->AddPolyline( points, 3, color, ImDrawFlags_RoundCornersAll | ImDrawFlags_Closed,
 	//                       roundf( iconScale * 4.0f ) );
@@ -196,34 +196,45 @@ static bool IsKeyPressed( ImGuiKey key ) {
 	return ImGui::IsKeyPressed( key, false );
 }
 
-	// ImGuiKey_Enter, ImGuiKey_KeypadEnter (activate binding mode for selected entry, like double-click)
-	// ImGuiKey_Escape (cancel binding mode or unselect if not in binding mode)
-	// ImGuiKey_Backspace, ImGuiKey_Delete, (delete currently selected binding(s))
-	// ImGuiKey_GamepadFaceDown (like enter) ImGuiKey_GamepadFaceRight (like Esc)
-	//   could use ImGuiKey_GamepadL2 (left trigger) for delete?
-	//   in idUserInterfaceLocal::HandleEvent() we treat left trigger as Enter
-	//  but what gamepad button to use for select?
-	//   - maybe ImGuiKey_GamepadFaceUp for enter and facedown for select?
-	//   - I think we don't really need select, just bind and clear and cancel
-	//     => maybe faceup for clear, facedown for bind (enter) and Start for cancel
-	//       (possibly also faceright for cancel, unless in binding mode where one might want to bind it)
-
-static bool IsSelectionKeyPressed() {
-	return IsKeyPressed( ImGuiKey_Space ); // TODO: any gamepad button?
-}
-
 static bool IsBindNowKeyPressed() {
-	return IsKeyPressed( ImGuiKey_Enter ) || IsKeyPressed( ImGuiKey_KeypadEnter ); // TODO: gamepad button?
+	return IsKeyPressed( ImGuiKey_Enter ) || IsKeyPressed( ImGuiKey_KeypadEnter )
+	       || IsKeyPressed( ImGuiKey_GamepadFaceDown );
 }
 
 static bool IsClearKeyPressed() {
-	return IsKeyPressed( ImGuiKey_Delete ) || IsKeyPressed( ImGuiKey_Backspace ); // TODO: gamepad button?
+	return IsKeyPressed( ImGuiKey_Delete ) || IsKeyPressed( ImGuiKey_Backspace )
+	       || IsKeyPressed( ImGuiKey_GamepadFaceUp );
+}
+
+static const char* GetGamepadStartName() {
+	return "Start"; // TODO: get from Doom3, could be different depending on xbox vs PS vs nintendo
+}
+
+static const char* GetGamepadCancelButtonNames() {
+	return "Start or B"; // TODO: get from Doom3, will be different depending on xbox vs PS vs nintendo
+}
+
+static const char* GetGamepadBindNowButtonName() { // TODO: rename to confirm or sth
+	return "A"; // TODO: get from Doom3, will be different depending on xbox vs PS vs nintendo
+}
+
+static const char* GetGamepadUnbindButtonName() {
+	return "Y"; // TODO: get from Doom3, ...
 }
 
 static bool IsCancelKeyPressed() {
+	// using Escape, gamepad Start and gamepad B for cancel, except in the
+	// binding case (so gamepad B can be bound), there only Esc and Start work.
+	// when the binding popup is active, gamepad nav is disabled, so
+	//   IsKeyPressed( ImGuiKey_Gamepad* ) returns false.
+	// That means that I need another way to detect gamepad Start being pressed for that case.
+	// In this demo I'm using gamepadStartPressed, in Doom3/dhewm3 I'll likely ask Doom3 if it
+	// thinks that Escape is pressed, becazse there gamepad start generates an Escape key event.
+
 	// Note: In Doom3, Escape opens/closes the main menu, so in dhewm3 the gamepad Start button
 	//       behaves the same, incl. the specialty that it can't be bound by the user
-	return IsKeyPressed( ImGuiKey_Escape ) || IsKeyPressed( ImGuiKey_GamepadStart );
+	return gamepadStartPressed || IsKeyPressed( ImGuiKey_Escape ) || IsKeyPressed( ImGuiKey_GamepadFaceRight );
+		// || IsKeyPressed( ImGuiKey_GamepadStart );
 }
 
 const char* GetKeyName( int keyNum, bool localized = true )
@@ -377,43 +388,28 @@ struct BindingEntry {
 	{
 		// if currently a popup is shown for creating a new binding or clearing one (BESS_WantBind
 		// or BESS_WantClear), everything is still rendered, but in a disabled (greyed out) state
-		// and shouldn't handle any input
+		// and shouldn't handle any input => then there's not much to do here,
+		//  except for highlighting at the end of the function
 		if ( selState < BESS_WantBind ) {
 			if ( ImGui::IsItemFocused() ) {
 				// Note: even when using the mouse, clicking a selectable will make it focused,
-				//       so it's possible to select a command (or specific binding of a command)
-				//       with the mouse and then press Enter to (re)bind it or Delete to clear it
-#if 0
-				if ( IsSelectionKeyPressed() ) {
-					if ( selState == BESS_Selected && selectedBinding == bindIdx ) {
-						printf("focus unselect bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
-						selState = BESS_NotSelected;
-						selectedBinding = BIND_NONE;
-					} else {
-						printf("focus select bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
-						selState = BESS_Selected;
-						selectedBinding = bindIdx;
-					}
-				} else
-#endif
-#if 0
-					if(selectedBinding != bindIdx) {
-					printf("focus select bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
-					selectedBinding = bindIdx;
-					selState = BESS_Selected;
-				}
-#endif
+				//  so it's possible to select a command (or specific binding of a command)
+				//  with the mouse and then press Enter to (re)bind it or Delete to clear it.
+				//  So whether something is selected mostly is equivalent to it being focused.
+				//  In the initial development of this code that wasn't the case, so there
+				//  *might* be some small inconsistencies due to that; but also intentional
+				//  special cases, like a binding entry being drawn as selected while
+				//  one of the popups is open to modify it
+				//  (=> it doesn't have focus then because the popup has focus)
+				//  That's not just cosmetical, selState and selectedBinding are
+				//  used to configure the popup.
+
+				selectedBinding = bindIdx;
+
 				if ( IsBindNowKeyPressed() ) {
-					// FIXME: if a column is already selected, that should probably have precedence over the focus?
-					//        AT LEAST if it's column 0
-					// TODO: or unselect when something else is focused?
 					printf("focus bind now bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 					selState = BESS_WantBind;
-					selectedBinding = bindIdx;
 				} else if ( IsClearKeyPressed() ) {
-					// FIXME: if a column is already selected, that should probably have precedence over the focus?
-					//        AT LEAST if it's column 0
-					// TODO: or unselect when something else is focused?
 					printf("focus clear now bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 					bool nothingToClear = false;
 					if ( bindIdx == BIND_ALL ) {
@@ -427,19 +423,17 @@ struct BindingEntry {
 					}
 
 					selState = nothingToClear ? BESS_Selected : BESS_WantClear;
-					selectedBinding = bindIdx;
 				} else if ( selState == BESS_NotSelected ) {
 					printf("focus select %s bindIdx %d selected_Binding %d\n", displayName.c_str(), bindIdx, selectedBinding);
 					selState = BESS_Selected;
-					selectedBinding = bindIdx;
 				}
 			} else if (selectedBinding == bindIdx && selState != BESS_NotSelected) {
-				// apparently this was selected but is not focused anymore => unselect it
+				// apparently this was still selected last frame, but is not focused anymore => unselect it
 				printf("unselect %s %d from lack of focus\n", displayName.c_str(), bindIdx);
 				selState = BESS_NotSelected;
 			}
 
-			if ( ImGui::IsItemHovered() ) {
+			if ( ImGui::IsItemHovered() ) { // mouse cursor is on this item
 				if ( bindIdx == BIND_ALL ) {
 					// if the first column (command name, like "Move Left") is hovered, highlight the whole row
 					// A normal Selectable would use ImGuiCol_HeaderHovered, but I use that as the "selected"
@@ -448,24 +442,13 @@ struct BindingEntry {
 					ImGui::TableSetBgColor( ImGuiTableBgTarget_RowBg0, highlightRowColor );
 				}
 
-				bool doubleClicked = ImGui::IsMouseDoubleClicked( 0 );
-				bool singleClicked = !doubleClicked && ImGui::IsMouseClicked( 0 );
-
-				if ( singleClicked ) {
-					if ( selState == BESS_Selected && selectedBinding == bindIdx ) {
-						//printf("hover unselect bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
-						//selState = BESS_NotSelected;
-						//selectedBinding = BIND_NONE;
-					} else {
-						//printf("hover select bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
-						//selState = BESS_Selected;
-						//selectedBinding = bindIdx;
-					}
-				} else if ( doubleClicked ) {
+				if ( ImGui::IsMouseDoubleClicked( 0 ) ) {
 					printf("hover doubleclick bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
 					selState = BESS_WantBind;
 					selectedBinding = bindIdx;
 				}
+				// Note: single-clicking an item gives it focus, so that's implictly
+				//  handled above in `if ( ImGui::IsItemFocused() ) { ...`
 			}
 		}
 
@@ -505,6 +488,7 @@ struct BindingEntry {
 
 		static ImVec2 winPos;
 		if ( newOpen ) {
+			// position the window right next to the [++] button that opens/closes it
 			winPos = btnMin;
 			winPos.x = btnMax.x + ImGui::GetStyle().ItemInnerSpacing.x;
 			ImGui::OpenPopup( menuWinTitle );
@@ -532,12 +516,29 @@ struct BindingEntry {
 				} else {
 					ImGui::SetItemTooltip( "Remove all keybindings for %s", displayName.c_str() );
 				}
+
 				ImGui::Unindent();
 				ImGui::PopStyleColor(3); // return to normal button color
+
+				ImGui::TableSetColumnIndex( 1 );
+
+				float helpHoverWidth = ImGui::CalcTextSize("(?)").x;
+				float offset = ImGui::GetContentRegionAvail().x - helpHoverWidth;
+				ImGui::SetCursorPosX( ImGui::GetCursorPosX() + offset );
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextDisabled( "(?)" );
+				if ( ImGui::BeginItemTooltip() ) {
+					ImGui::PushTextWrapPos( ImGui::GetFontSize() * 35.0f );
+					ImGui::Text( "You can close this window with Escape or %s on the gamepad or by clicking the little (x) button or by clicking the [++] button again.",
+					             GetGamepadCancelButtonNames() );
+					ImGui::PopTextWrapPos();
+					ImGui::EndTooltip();
+				}
+
 				ImGui::Spacing();
 
 				ImU32 highlightRowColor = 0;
-				if ( selectedBinding >= 0 || selectedBinding == BIND_ALL ) {
+				if ( selectedBinding == BIND_ALL ) {
 					highlightRowColor = ImGui::GetColorU32( ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) );
 				}
 
@@ -617,12 +618,14 @@ struct BindingEntry {
 			ImRect workRect(viewPort.WorkPos, viewPort.WorkPos + viewPort.WorkSize);
 
 			if ( !workRect.Contains(winRect) ) {
-
+				// this window is at least partly outside the visible area of the screen (or SDL window)
+				// => move it around so it's completely visible, if possible
 				ImRect r_avoid( btnMin, btnMax );
 				r_avoid.Expand( ImGui::GetStyle().ItemInnerSpacing );
 
 				ImGuiDir dir = ImGuiDir_Right;
-				ImVec2 newWinPos = ImGui::FindBestWindowPosForPopupEx( ImVec2(btnMin.x, btnMax.y), winSize, &dir, workRect, r_avoid, ImGuiPopupPositionPolicy_Default );
+				ImVec2 newWinPos = ImGui::FindBestWindowPosForPopupEx( ImVec2(btnMin.x, btnMax.y),
+							winSize, &dir, workRect, r_avoid, ImGuiPopupPositionPolicy_Default );
 				ImVec2 posDiff = newWinPos - winPos;
 				if ( fabsf(posDiff.x) > 2.0f || fabsf(posDiff.y) > 2.0f ) {
 					winPos = newWinPos;
@@ -630,6 +633,7 @@ struct BindingEntry {
 				}
 			}
 
+			// allow closing this window with escape
 			if ( ImGui::IsWindowFocused() && IsCancelKeyPressed() ) {
 				showThisMenu = false;
 			}
@@ -725,7 +729,7 @@ struct BindingEntry {
 				newOpen = true;
 				CompactBindings();
 			}
-			if ( ImGui::IsItemFocused() ) {
+			if ( ImGui::IsItemFocused() && newSelState != BESS_NotSelected ) {
 				printf("> Draw(): unselect because ++ button seems to be focused\n");
 				newSelState = BESS_NotSelected;
 			}
@@ -790,7 +794,8 @@ struct BindingEntry {
 			}
 
 			ImGui::NewLine();
-			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
+			ImGui::Text( "Press Enter (or gamepad %s) to confirm, or\nEscape (or gamepad %s) to cancel.",
+			             GetGamepadBindNowButtonName(), GetGamepadCancelButtonNames() );
 			ImGui::NewLine();
 
 			// center the Ok and Cancel buttons
@@ -943,7 +948,7 @@ struct BindingEntry {
 			bool clickFieldHovered = ImGui::IsItemHovered();
 
 			ImGui::NewLine();
-			ImGui::TextUnformatted( "... or press Escape to cancel." );
+			ImGui::Text( "... or press Escape (or gamepad %s) to cancel.", GetGamepadStartName() );
 
 			ImGui::NewLine();
 			// center the Cancel button
@@ -974,6 +979,14 @@ struct BindingEntry {
 						pressedKey = key;
 						break;
 					}
+
+					// Note: in the standalone demo this doesn't work for gamepad buttons
+					//   (because I disabled ImGuiConfigFlags_NavEnableGamepad, and
+					//    the SDL2 backend currently completely disables gamepad input then,
+					//    see "FIXME: Technically feeding gamepad shouldn't depend on this now that they are regular inputs."
+					//    in backends/imgui_impl_sdl2.cpp)
+					//   but in Doom3 I'll use Doom3 key events for this,
+					//   so it will work there either way.
 				}
 
 				if ( pressedKey != ImGuiKey_None ) {
@@ -993,7 +1006,7 @@ struct BindingEntry {
 						// TODO: select column with that specific binding?
 					} else {
 						// that key is already bound to some other command, show confirmation popup
-						// FIXME: must also handle the case that it's binding to some command that is *not* handled by the menu
+						// FIXME: must also handle the case that it's binding to some Doom3 command that is *not* handled by the menu
 						rebindKeyNum = pressedKey;
 						rebindOtherEntry = oldBE;
 
@@ -1017,10 +1030,14 @@ struct BindingEntry {
 		{
 			const char* keyName = GetKeyName( rebindKeyNum );
 
+			// TODO: if rebindOtherEntry == NULL, get command for rebindKeyNum from Doom3 directly
+			//       and don't use rebindOtherEntry !
+
 			ImGui::Text( "Key '%s' is already bound to command %s !\nBind to %s instead?",
 			             keyName, rebindOtherEntry->displayName.c_str(), displayName.c_str() );
 			ImGui::NewLine();
-			ImGui::TextUnformatted( "Press Enter to confirm or Escape to cancel." );
+			ImGui::Text( "Press Enter (or gamepad %s) to confirm,\nor Escape (or gamepad %s) to cancel.",
+			             GetGamepadBindNowButtonName(), GetGamepadCancelButtonNames() );
 			ImGui::NewLine();
 
 			// center the Ok and Cancel buttons
@@ -1118,7 +1135,7 @@ static BindingEntry bindingEntries[] = {
 	{ "", "Move / Look", nullptr },
 	{ "_forward",       "Forward"    , nullptr, { ImGuiKey_W, ImGuiKey_GamepadLStickUp, ImGuiKey_E, ImGuiKey_R, ImGuiKey_Z, ImGuiKey_T } },
 	{ "_back",          "Backpedal"  , "walk back", {ImGuiKey_S} },
-#if 0
+#if 01
 	{ "_moveLeft",      "Move Left"  , "strafe left" },
 	{ "_moveRight",     "Move Right" , nullptr },
 	{ "", "Weapons", nullptr },
@@ -1144,7 +1161,7 @@ static void DrawBindingsMenu()
 {
 	{
 		// the InputInt will look kinda like this:
-		// [10] [-] [+] Number of Bin...
+		// [10] [-] [+] Number of Binding columns...
 		// the [-] and [+] buttons have size GetFrameHeight()^2
 		// calculate the width it needs (without the "Number of ..." text)
 		// for the text input field not too look too big
@@ -1167,9 +1184,9 @@ static void DrawBindingsMenu()
 		if ( ImGui::TreeNode("Usage Help") ) {
 			AddTooltip( "Click to hide help text" );
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-			const char* gamepadBindNowButton = "<TODO: gamepad button for bind now (probably A or south)>";
-			const char* gamepadDeleteNowButton = "<TODO: gamepad delete button>";
-			const char* gamepadCancelButton = "<TODO: gamepad start button>";
+			const char* gamepadBindNowButton = GetGamepadBindNowButtonName();
+			const char* gamepadDeleteNowButton = GetGamepadUnbindButtonName();
+			const char* gamepadCancelButton = GetGamepadCancelButtonNames();
 			ImGui::TextWrapped( "Double click a keybinding entry below to bind a (different) key, or select it by clicking it once or navigating to it with cursor keys or gamepad and pressing Enter (or gamepad %s) to (re)bind it.",
 			                    gamepadBindNowButton );
 			ImGui::TextWrapped( "Remove a key binding (unbind) by selecting it and pressing Backspace, Delete or %s.",
@@ -1221,7 +1238,7 @@ static void DrawBindingsMenu()
 			if ( lastBeginTable ) {
 				ImGui::TableSetupScrollFreeze(1, 0);
 				ImGui::TableSetupColumn( "Command", ImGuiTableColumnFlags_WidthFixed, commandColumnWidth );
-				for ( int j=1; j <= numBindingColumns; ++j ) {
+				for ( int j=0; j < numBindingColumns; ++j ) {
 					char colName[16];
 					snprintf(colName, sizeof(colName), "binding%d", j);
 					ImGui::TableSetupColumn( colName );
@@ -1400,10 +1417,22 @@ int main(int, char**)
             ImGui_ImplSDL2_ProcessEvent(&event);
             switch(event.type)
             {
+                case SDL_CONTROLLERBUTTONUP:
+                    // DG: special case: I need to know if start is pressed even if ImGui is configured to ignore gamepad input
+                    //     (because it's used just like escape)
+                    if ( event.cbutton.button == SDL_CONTROLLER_BUTTON_START ) {
+                        gamepadStartPressed = false;
+                    }
+                    break;
+                case SDL_CONTROLLERBUTTONDOWN:
+                    if ( event.cbutton.button == SDL_CONTROLLER_BUTTON_START ) {
+                        gamepadStartPressed = true;
+                    }
+                    // fall-through
                 case SDL_MOUSEWHEEL:
                 case SDL_MOUSEBUTTONDOWN:
                 case SDL_KEYDOWN:
-                case SDL_CONTROLLERBUTTONDOWN:
+
                 // TODO: controller trigger?
                     hadKeyDownEvent = true;
             }
