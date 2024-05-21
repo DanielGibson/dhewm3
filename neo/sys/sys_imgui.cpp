@@ -97,6 +97,8 @@ void SetScale( float scale )
 	imgui_scale.SetFloat( scale );
 }
 
+static bool imgui_initialized = false;
+
 // using void* instead of SDL_Window and SDL_GLContext to avoid dragging SDL headers into sys_imgui.h
 bool Init(void* _sdlWindow, void* sdlGlContext)
 {
@@ -172,16 +174,20 @@ bool Init(void* _sdlWindow, void* sdlGlContext)
 	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
 	//IM_ASSERT(font != nullptr);
 
+	imgui_initialized = true;
 	return true;
 }
 
 void Shutdown()
 {
-	common->Printf( "Shutting down ImGui\n" );
-
-	ImGui_ImplOpenGL2_Shutdown();
-	ImGui_ImplSDL2_Shutdown();
-	ImGui::DestroyContext( imguiCtx );
+	if ( imgui_initialized ) {
+		common->Printf( "Shutting down ImGui\n" );
+		// TODO: only if init was successful!
+		ImGui_ImplOpenGL2_Shutdown();
+		ImGui_ImplSDL2_Shutdown();
+		ImGui::DestroyContext( imguiCtx );
+		imgui_initialized = false;
+	}
 }
 
 // NewFrame() is called once per D3 frame, after all events have been gotten
