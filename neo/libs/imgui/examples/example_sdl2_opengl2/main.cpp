@@ -383,6 +383,7 @@ struct BindingEntry {
 				// Note: even when using the mouse, clicking a selectable will make it focused,
 				//       so it's possible to select a command (or specific binding of a command)
 				//       with the mouse and then press Enter to (re)bind it or Delete to clear it
+#if 0
 				if ( IsSelectionKeyPressed() ) {
 					if ( selState == BESS_Selected && selectedBinding == bindIdx ) {
 						printf("focus unselect bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
@@ -393,7 +394,16 @@ struct BindingEntry {
 						selState = BESS_Selected;
 						selectedBinding = bindIdx;
 					}
-				} else if ( IsBindNowKeyPressed() ) {
+				} else
+#endif
+#if 0
+					if(selectedBinding != bindIdx) {
+					printf("focus select bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
+					selectedBinding = bindIdx;
+					selState = BESS_Selected;
+				}
+#endif
+				if ( IsBindNowKeyPressed() ) {
 					// FIXME: if a column is already selected, that should probably have precedence over the focus?
 					//        AT LEAST if it's column 0
 					// TODO: or unselect when something else is focused?
@@ -411,14 +421,22 @@ struct BindingEntry {
 							ShowWarningOverlay( "No keys are bound to this command, so there's nothing to unbind" );
 							nothingToClear = true;
 						}
-					} else if ( bindIdx < 0 || (size_t)bindIdx >= bindings.size() || bindings[bindIdx].keyNum == -1 ) {
+					} else if ( bindIdx < 0 || bindIdx >= (int)bindings.size() || bindings[bindIdx].keyNum == -1 ) {
 						ShowWarningOverlay( "No bound key selected for unbind" );
 						nothingToClear = true;
 					}
 
 					selState = nothingToClear ? BESS_Selected : BESS_WantClear;
 					selectedBinding = bindIdx;
+				} else if ( selState == BESS_NotSelected ) {
+					printf("focus select %s bindIdx %d selected_Binding %d\n", displayName.c_str(), bindIdx, selectedBinding);
+					selState = BESS_Selected;
+					selectedBinding = bindIdx;
 				}
+			} else if (selectedBinding == bindIdx && selState != BESS_NotSelected) {
+				// apparently this was selected but is not focused anymore => unselect it
+				printf("unselect %s %d from lack of focus\n", displayName.c_str(), bindIdx);
+				selState = BESS_NotSelected;
 			}
 
 			if ( ImGui::IsItemHovered() ) {
@@ -435,13 +453,13 @@ struct BindingEntry {
 
 				if ( singleClicked ) {
 					if ( selState == BESS_Selected && selectedBinding == bindIdx ) {
-						printf("hover unselect bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
-						selState = BESS_NotSelected;
-						selectedBinding = BIND_NONE;
+						//printf("hover unselect bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
+						//selState = BESS_NotSelected;
+						//selectedBinding = BIND_NONE;
 					} else {
-						printf("hover select bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
-						selState = BESS_Selected;
-						selectedBinding = bindIdx;
+						//printf("hover select bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
+						//selState = BESS_Selected;
+						//selectedBinding = bindIdx;
 					}
 				} else if ( doubleClicked ) {
 					printf("hover doubleclick bindIdx %d selected_Binding %d\n", bindIdx, selectedBinding);
@@ -465,6 +483,8 @@ struct BindingEntry {
 				//  highlighting of the column 0 cell, otherwise it'd look darker due to displayNameBGColor)
 			}
 		}
+
+		//printf("XX returning from UpdateSelectionState() %s selectedBinding = %d selState = %d\n", displayName.c_str(), selectedBinding, selState);
 	}
 
 	bool DrawAllBindingsWindow( /* in+out */ BindingEntrySelectionState& selState, bool newOpen, const ImVec2& btnMin, const ImVec2& btnMax )
@@ -705,6 +725,10 @@ struct BindingEntry {
 				newOpen = true;
 				CompactBindings();
 			}
+			if ( ImGui::IsItemFocused() ) {
+				printf("> Draw(): unselect because ++ button seems to be focused\n");
+				newSelState = BESS_NotSelected;
+			}
 			ImVec2 btnMin = ImGui::GetItemRectMin();
 			ImVec2 btnMax = ImGui::GetItemRectMax();
 			if ( numBindings > numBindingColumns ) {
@@ -728,6 +752,8 @@ struct BindingEntry {
 			ImGui::PopID();
 
 			if ( newSelState == BESS_NotSelected ) {
+				if(oldSelState != newSelState)
+					printf("> Draw(): new state of %s is not selected\n", displayName.c_str());
 				selectedBinding = BIND_NONE;
 			}
 			return newSelState;
@@ -749,7 +775,7 @@ struct BindingEntry {
 		}
 	}
 
-	BindingEntrySelectionState HandleClearPopup( const char* popupName )
+	BindingEntrySelectionState HandleClearPopup( const char* popupName, bool newOpen )
 	{
 		BindingEntrySelectionState ret = BESS_WantClear;
 		const int selectedBinding = this->selectedBinding;
@@ -774,10 +800,12 @@ struct BindingEntry {
 			ImGui::SetCursorPosX( buttonOffset );
 
 			bool confirmedByKey = false;
-			if ( !ImGui::IsAnyItemFocused() ) {
+			if ( !newOpen && !ImGui::IsAnyItemFocused() ) {
 				// if no item is focused (=> not using keyboard or gamepad navigation to select
 				//  [Ok] or [Cancel] button), check if Enter has been pressed to confirm deletion
 				// (otherwise, enter can be used to chose the selected button)
+				// also, don't do this when just opened, because then enter might still
+				// be pressed from selecting the Unbind button in the AllBindingsWindow
 				confirmedByKey = IsBindNowKeyPressed();
 			}
 			if ( ImGui::Button( "Ok", ImVec2(dialogButtonWidth, 0) ) || confirmedByKey ) {
@@ -882,7 +910,7 @@ struct BindingEntry {
 	}
 
 
-	BindingEntrySelectionState HandleBindPopup( const char* popupName, bool firstOpen )
+	BindingEntrySelectionState HandleBindPopup( const char* popupName, bool newOpen )
 	{
 		BindingEntrySelectionState ret = BESS_WantBind;
 		const int selectedBinding = this->selectedBinding;
@@ -927,7 +955,7 @@ struct BindingEntry {
 				ImGui::CloseCurrentPopup();
 				ret = BESS_Selected;
 				io.ConfigFlags |= (ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard);
-			} else if ( !firstOpen ) {
+			} else if ( !newOpen ) {
 				// find out if any key is pressed and bind that (except for Esc which can't be
 				// bound and is already handled though IsCancelKeyPressed() above)
 				// (but don't run this when the popup has just been opened, because then
@@ -981,7 +1009,7 @@ struct BindingEntry {
 		return ret;
 	}
 
-	BindingEntrySelectionState HandleRebindPopup( const char* popupName )
+	BindingEntrySelectionState HandleRebindPopup( const char* popupName, bool newOpen )
 	{
 		BindingEntrySelectionState ret = BESS_WantRebind;
 
@@ -1002,10 +1030,12 @@ struct BindingEntry {
 			ImGui::SetCursorPosX( buttonOffset );
 
 			bool confirmedByKey = false;
-			if ( !ImGui::IsAnyItemFocused() ) {
+			if ( !newOpen && !ImGui::IsAnyItemFocused() ) {
 				// if no item is focused (=> not using keyboard or gamepad navigation to select
 				//  [Ok] or [Cancel] button), check if Enter has been pressed to confirm deletion
 				// (otherwise, enter can be used to chose the selected button)
+				// but don't do this when just opened, because then enter might still
+				// be pressed from trying to bind Enter in the BindPopup
 				confirmedByKey = IsBindNowKeyPressed();
 			}
 
@@ -1038,8 +1068,6 @@ struct BindingEntry {
 
 	void HandlePopup( BindingEntrySelectionState& selectionState )
 	{
-		// TODO: turn selectedColumn into selectedBinding, use -1 for "none", -2 (instead of 0) for "all", -3 for "append" (for new binding)
-
 		assert(selectedBinding != BIND_NONE);
 		const char* popupName = nullptr;
 
@@ -1061,22 +1089,22 @@ struct BindingEntry {
 		}
 
 		static bool popupOpened = false;
-		bool firstOpen = false;
+		bool newOpen = false;
 		if ( !popupOpened ) {
 			ImGui::OpenPopup( popupName );
 			popupOpened = true;
-			firstOpen = true;
+			newOpen = true;
 		}
 		ImVec2 center = ImGui::GetMainViewport()->GetCenter();
 		ImGui::SetNextWindowPos( center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f) );
 
 		BindingEntrySelectionState newSelState = BESS_Selected;
 		if ( selectionState == BESS_WantClear ) {
-			newSelState = HandleClearPopup( popupName );
+			newSelState = HandleClearPopup( popupName, newOpen );
 		} else if ( selectionState == BESS_WantBind ) {
-			newSelState = HandleBindPopup( popupName, firstOpen );
+			newSelState = HandleBindPopup( popupName, newOpen );
 		} else {
-			newSelState = HandleRebindPopup( popupName );
+			newSelState = HandleRebindPopup( popupName, newOpen );
 		}
 
 		if ( newSelState != selectionState ) {
@@ -1088,13 +1116,15 @@ struct BindingEntry {
 
 static BindingEntry bindingEntries[] = {
 	{ "", "Move / Look", nullptr },
-	{ "_forward",       "Forward"    , nullptr, { ImGuiKey_W, ImGuiKey_GamepadLStickUp, ImGuiKey_A, ImGuiKey_S, ImGuiKey_D, ImGuiKey_F } },
-	{ "_back",          "Backpedal"  , "walk back" },
+	{ "_forward",       "Forward"    , nullptr, { ImGuiKey_W, ImGuiKey_GamepadLStickUp, ImGuiKey_E, ImGuiKey_R, ImGuiKey_Z, ImGuiKey_T } },
+	{ "_back",          "Backpedal"  , "walk back", {ImGuiKey_S} },
+#if 0
 	{ "_moveLeft",      "Move Left"  , "strafe left" },
 	{ "_moveRight",     "Move Right" , nullptr },
 	{ "", "Weapons", nullptr },
 	{ "_impulse0",      "Fists",  "the other kind of fisting" },
 	{ "_impulse1",      "Pistol",  nullptr },
+#endif
 };
 
 // return NULL if not currently bound to anything
@@ -1245,7 +1275,7 @@ static void myWindow()
 {
 	ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
 
-	ImGui::SliderFloat( "blaScale", &blaScale, 0.1, 20.0, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+	ImGui::SliderFloat( "blaScale", &blaScale, 0.1, 20.0, "%.2f", ImGuiSliderFlags_AlwaysClamp );
 
 	//ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
 	ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
