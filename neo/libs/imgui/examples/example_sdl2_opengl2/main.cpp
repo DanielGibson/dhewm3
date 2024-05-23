@@ -1,3 +1,13 @@
+/*
+ * Prototype of a keybinding menu. Searching for "Doom3" should give you most of the places
+ * in the code that need to be adjusted when integrating this in a real game.
+ *
+ * (C) 2024 Daniel Gibson
+ *
+ * Released under MIT license, like Dear ImGui
+ */
+
+
 // Dear ImGui: standalone example application for SDL2 + OpenGL
 // (SDL is a cross-platform general purpose library for handling windows, inputs, OpenGL/Vulkan/Metal graphics context creation, etc.)
 
