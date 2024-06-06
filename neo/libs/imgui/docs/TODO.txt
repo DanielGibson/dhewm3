@@ -39,7 +39,7 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - scrolling: forward mouse wheel scrolling to parent window when at the edge of scrolling limits? (useful for listbox,tables?)
  - scrolling/style: shadows on scrollable areas to denote that there is more contents (see e.g. DaVinci Resolve ui)
 
- - drawdata: make it easy to deep-copy (or swap?) a full ImDrawData so user can easily save that data if they use threaded rendering. (e.g. #2646)
+ - drawdata: make it easy to deep-copy (or swap?) a full ImDrawData so user can easily save that data if they use threaded rendering. (#1860 see ImDrawDataSnapshot)
  ! drawlist: add CalcTextSize() func to facilitate consistent code from user pov (currently need to use ImGui or ImFont alternatives!)
  - drawlist: maintaining bounding box per command would allow to merge draw command when clipping isn't relied on (typical non-scrolling window or non-overflowing column would merge with previous command). (WIP branch)
  - drawlist: make it easier to toggle AA per primitive, so we can use e.g. non-AA fill + AA borders more naturally
@@ -117,7 +117,7 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
 !- color: the color conversion helpers/types are a mess and needs sorting out.
  - color: (api breaking) ImGui::ColorConvertXXX functions should be loose ImColorConvertXX to match imgui_internals.h
 
- - plot: full featured plot/graph api w/ scrolling, zooming etc. --> ImPlot
+ - plot: full featured plot/graph api w/ scrolling, zooming etc. --> promote using ImPlot
  - (plot: deleted all other todo lines on 2023-06-28)
 
  - clipper: ability to disable the clipping through a simple flag/bool.
@@ -129,7 +129,35 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - separator: width, thickness, centering (#1643, #2657)
  - splitter: formalize the splitter idiom into an official api (we want to handle n-way split) (#319)
 
- - docking: merge docking branch (#2109)
+ - docking: B: ordering currently held in tab bar should be implicitly held by windows themselves (also see #2304)
+ - docking: B- tab bar: the order/focus restoring code could be part of TabBar and not DockNode? (#8)
+ - docking: B~ rework code to be able to lazily create tab bar instance in a single place. The _Unsorted tab flag could be replacing a trailing-counter in DockNode?
+ - docking: B~ fully track windows/settings reference in dock nodes. perhaps find a representation that allows facilitate use of dock builder functions.
+ - docking: B~ Unreal style document system (requires low-level controls of dockspace serialization fork/copy/delete). this is mostly working but the DockBuilderXXX api are not exposed/finished.
+ - docking: B: when docking outer, perform size locking on neighbors nodes the same way we do it with splitters, so other nodes are not resized.
+ - docking: B~ central node resizing behavior incorrect.
+ - docking: B: changing title font/style per-window is not supported as dock nodes are created in NewFrame.
+ - docking: B- dock node inside its own viewports creates 1 temporary viewport per window on startup before ditching them (doesn't affect the user nor request platform windows to be created, but unnecessary)
+ - docking: B- resize sibling locking behavior may be less desirable if we merged same-axis sibling in a same node level?
+ - docking: B- single visible node part of a hidden split hierarchy (OnlyNodeWithWindows != NULL) should show a normal title bar (not a tab bar)
+ - docking: B~ SetNextWindowDock() calls (with conditional) -> defer everything to DockContextUpdate (repro: Documents->[X]Windows->Dock 1 elsewhere->Click Redock All
+ - docking: B~ tidy up tab list popup buttons features (available with manual tab-bar, see ImGuiTabBarFlags_NoTabListPopupButton code, not used by docking nodes)
+ - docking: B- SetNextWindowDockId(0) with a second Begin() in the frame will asserts
+ - docking: B: resize grip drawn in host window typically appears under scrollbar.
+ - docking: B: resize grip auto-resize on multiple node hierarchy doesn't make much sense or should be improved?
+ - docking: B- SetNextWindowFocus() doesn't seem to apply if the window is hidden this frame, need repro (#4)
+ - docking: B- resizing a dock tree small currently has glitches (overlapping collapse and close button, etc.)
+ - docking: B- dpi: look at interaction with the hi-dpi and multi-dpi stuff.
+ - docking: B- tab bar: appearing on first frame with a dumb layout would do less harm that not appearing? (when behind dynamic branch) or store titles + render in EndTabBar()
+ - docking: B- tab bar: make selected tab always shows its full title?
+ - docking: B- hide close button on single tab bar?
+ - docking: B- nav: design interactions so nav controls can dock/undock
+ - docking: B- dockspace: flag to lock the dock tree and/or sizes (ImGuiDockNodeFlags_Locked?)
+ - docking: B- reintroduce collapsing a floating dock node. also collapsing a docked dock node!
+ - docking: B- allow dragging a non-floating dock node by clicking on the title-bar-looking section (not just the collapse/menu button)
+ - docking: B- option to remember undocked window size? (instead of keeping their docked size) (relate to #2104)
+ - docking: C- nav: CTRL+TAB highlighting tabs shows the mismatch between focus-stack and tab-order (not visible in VS because it doesn't highlight the tabs)
+ - docking: C- after a dock/undock, the Scrollbar Status update in Begin() should use an updated e.g. size_y_for_scrollbars to avoid a 1 frame scrollbar flicker.
 
  - tabs: "there is currently a problem because TabItem() will try to submit their own tooltip after 0.50 second, and this will have the effect of making your tooltip flicker once." -> tooltip priority work (WIP branch)
  - tabs: make EndTabBar fail if users doesn't respect BeginTabBar return value, for consistency/future-proofing.
@@ -150,7 +178,6 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - drag float: power != 0.0f with current value being outside the range keeps the value stuck.
  - drag float: added leeway on edge (e.g. a few invisible steps past the clamp limits)
 
- - combo: use clipper.
  - combo: a way/helper to customize the combo preview (#1658) -> experimental BeginComboPreview()
  - combo/listbox: keyboard control. need InputText-like non-active focus + key handling. considering keyboard for custom listbox (pr #203)
  - listbox: multiple selection (WIP range-select branch)
@@ -173,15 +200,14 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - tooltip: drag and drop with tooltip near monitor edges lose/changes its last direction instead of locking one. The drag and drop tooltip should always follow without changing direction.
  - tooltip: allow to set the width of a tooltip to allow TextWrapped() etc. while keeping the height automatic.
  - tooltip: drag tooltip hovering over source widget with IsItemHovered/SetTooltip flickers (WIP branch)
+ - tooltip: tooltip priorities to override a stock tooltip (e.g. shortcut tooltip)
 
  - status-bar: add a per-window status bar helper similar to what menu-bar does. generalize concept of layer0 rect in window (can make _MenuBar window flag obsolete too).
  - shortcuts: store multiple keychords in ImGuiKeyChord
  - shortcuts: Hovered route (lower than Focused, higher than Global)
  - shortcuts: local-style shortcut api, e.g. parse "&Save"
  - shortcuts,menus: global-style shortcut api e.g. "Save (CTRL+S)" -> explicit flag for recursing into closed menu
- - shortcuts: programmatically access shortcuts "Focus("&Save"))
- - menus: menu-bar: main menu-bar could affect clamping of windows position (~ akin to modifying DisplayMin)
- - menus: hovering from menu to menu on a menu-bar has 1 frame without any menu, which is a little annoying. ideally either 0 either longer.
+ - menus: hovering from menu to menu on a menu-bar has 1 frame without any menu, which is a little annoying. ideally zero.
  - menus: would be nice if the Selectable() supported horizontal alignment (must be given the equivalent of WorkRect.Max.x matching the position of the shortcut column)
 
  - tree node: add treenode/treepush int variants? not there because (void*) cast from int warns on some platforms/settings?
@@ -277,7 +303,6 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - font/opt: Considering storing standalone AdvanceX table as 16-bit fixed point integer?
  - font/opt: Glyph currently 40 bytes (2+9*4). Consider storing UV as 16-bits integer? (->32 bytes). X0/Y0/X1/Y1 as 16 fixed-point integers? Or X0/Y0 as float and X1/Y1 as fixed8_8?
 
- - nav: visual feedback on button press.
  - nav: some features such as PageUp/Down/Home/End should probably work without ImGuiConfigFlags_NavEnableKeyboard? (where do we draw the line? how about CTRL+Tab)
  ! nav: never clear NavId on some setup (e.g. gamepad centric)
  - nav: there's currently no way to completely clear focus with the keyboard. depending on patterns used by the application to dispatch inputs, it may be desirable.
@@ -305,6 +330,20 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - nav/windowing: Resizing window will currently fail with certain types of resizing constraints/callback applied
  - focus: preserve ActiveId/focus stack state, e.g. when opening a menu and close it, previously selected InputText() focus gets restored (#622)
 
+ - viewport: make it possible to have no main/hosting viewport
+ - viewport: We set ImGuiViewportFlags_NoFocusOnAppearing in a way that is required for GLFW/SDL binding, but could be handled better without
+   on a custom e.g. Win32 bindings. It prevents newly dragged-out viewports from taking the focus, which makes ALT+F4 more ambiguous.
+ - viewport: not focusing newly undocked viewport means clicking back on previous one doesn't bring OS window to front.
+ - viewport: with platform decoration enabled, platform may force constraint (e.g. minimum size)
+ - viewport: use getfocus/setfocus api to synchronize imgui<>platform focus better (e.g imgui-side ctrl-tab can focus os window, OS initial setup and alt-tab can focus imgui window etc.)
+ - viewport: store per-viewport/monitor DPI in .ini file so an application reload or main window changing DPI on reload can be properly patched for.
+ - viewport: implicit/fallback Debug window can hog a zombie viewport (harmless, noisy?) > could at least clear out the reference on a per session basis?
+ - viewport: need to clarify how to use GetMousePos() from a user point of view.
+ - platform: glfw: no support for ImGuiBackendFlags_HasMouseHoveredViewport.
+ - platform: sdl: no support for ImGuiBackendFlags_HasMouseHoveredViewport. maybe we could use SDL_GetMouseFocus() / SDL_WINDOW_MOUSE_FOCUS if imgui could fallback on its heuristic when NoInputs is set
+ - platform: sdl: no refresh of monitor/display (SDL doesn't seem to have an event for it).
+ - platform: sdl: multi-viewport + minimized window seems to break mouse wheel events (at least under Win32).
+
  - inputs: support track pad style scrolling & slider edit.
  - inputs/io: backspace and arrows in the context of a text input could use system repeat rate.
  - inputs/io: clarify/standardize/expose repeat rate and repeat delays (#1808)
@@ -317,8 +356,7 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - misc: make the ImGuiCond values linear (non-power-of-two). internal storage for ImGuiWindow can use integers to combine into flags (Why?)
  - misc: PushItemFlag(): add a flag to disable keyboard capture when used with mouse? (#1682)
  - misc: use more size_t in public api?
- - misc: possible compile-time support for string view/range instead of char* would e.g. facilitate usage with Rust (#683, #3038, WIP string_view branch)
- - misc: possible compile-time support for wchar_t instead of char*?
+ - misc: support for string view/range instead of char* would e.g. facilitate usage with Rust (#683, #3038, WIP string_view branch)
 
  - demo: demonstrate using PushStyleVar() in more details.
  - demo: add vertical separator demo
@@ -338,7 +376,7 @@ It's mostly a bunch of personal notes, probably incomplete. Feel free to query i
  - backends: bgfx: https://gist.github.com/RichardGale/6e2b74bc42b3005e08397236e4be0fd0
  - backends: emscriptem: with refactored examples, we could provide a direct imgui_impl_emscripten platform layer (see eg. https://github.com/floooh/sokol-samples/blob/master/html5/imgui-emsc.cc#L42)
 
- - bindings: ways to use clang ast dump to generate bindings or helpers for bindings? (e.g. clang++ -Xclang -ast-dump=json imgui.h) (WIP project "dear-bindings" still private)
+ - bindings: ways to use clang ast dump to generate bindings or helpers for bindings? (e.g. clang++ -Xclang -ast-dump=json imgui.h) (--> use https://github.com/dearimgui/dear_bindings)
 
  - optimization: replace vsnprintf with stb_printf? using IMGUI_USE_STB_SPRINTF. (#1038 + needed for string_view)
  - optimization: add clipping for multi-component widgets (SliderFloatX, ColorEditX, etc.). one problem is that nav branch can't easily clip parent group when there is a move request.
