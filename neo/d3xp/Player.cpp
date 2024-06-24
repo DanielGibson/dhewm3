@@ -1600,7 +1600,8 @@ void idPlayer::Init( void ) {
 	stamina = pm_stamina.GetFloat();
 
 	// air always initialized to maximum too
-	airTics = pm_airTics.GetFloat();
+	//airTics = pm_airTics.GetFloat();
+	airTics = pm_airTics.GetFloat() / 60 * USERCMD_HZ;  // dezo2
 	airless = false;
 
 	gibDeath = false;
@@ -3231,9 +3232,13 @@ void idPlayer::DrawHUD( idUserInterface *_hud ) {
 			if ( weapon.GetEntity()->GetGrabberState() == 1 || weapon.GetEntity()->GetGrabberState() == 2 ) {
 				cursor->SetStateString( "grabbercursor", "1" );
 				cursor->SetStateString( "combatcursor", "0" );
+				cursor->SetStateBool("scaleto43", false);   // dezo2, unscaled
+				cursor->StateChanged(gameLocal.realClientTime);   // dezo2, set state
 			} else {
 				cursor->SetStateString( "grabbercursor", "0" );
 				cursor->SetStateString( "combatcursor", "1" );
+				cursor->SetStateBool("scaleto43", true);   // dezo2, scaled
+				cursor->StateChanged(gameLocal.realClientTime);   // dezo2, set state
 			}
 #endif
 
@@ -3511,12 +3516,13 @@ bool idPlayer::Give( const char *statname, const char *value ) {
 		}
 
 	} else if ( !idStr::Icmp( statname, "air" ) ) {
-		if ( airTics >= pm_airTics.GetInteger() ) {
+		int airTicsCnt = pm_airTics.GetInteger() / 60 * USERCMD_HZ;  // dezo2
+		if ( airTics >= airTicsCnt ) {  // dezo2
 			return false;
 		}
 		airTics += atoi( value ) / 100.0 * pm_airTics.GetInteger();
-		if ( airTics > pm_airTics.GetInteger() ) {
-			airTics = pm_airTics.GetInteger();
+		if ( airTics > airTicsCnt ) {  // dezo2
+			airTics = airTicsCnt;  // dezo2
 		}
 #ifdef _D3XP
 	} else if ( !idStr::Icmp( statname, "enviroTime" ) ) {
@@ -6071,6 +6077,8 @@ void idPlayer::UpdateAir( void ) {
 		return;
 	}
 
+	int airTicsCnt = pm_airTics.GetInteger() / 60 * USERCMD_HZ;  // dezo2
+
 	// see if the player is connected to the info_vacuum
 	bool	newAirless = false;
 
@@ -6126,8 +6134,8 @@ void idPlayer::UpdateAir( void ) {
 			}
 		}
 		airTics+=2;	// regain twice as fast as lose
-		if ( airTics > pm_airTics.GetInteger() ) {
-			airTics = pm_airTics.GetInteger();
+		if ( airTics > airTicsCnt ) {  // dezo2
+			airTics = airTicsCnt;  // dezo2
 		}
 	}
 
@@ -7648,7 +7656,7 @@ bool idPlayer::CanGive( const char *statname, const char *value ) {
 		return true;
 
 	} else if ( !idStr::Icmp( statname, "air" ) ) {
-		if ( airTics >= pm_airTics.GetInteger() ) {
+		if ( airTics >= pm_airTics.GetInteger() / 60 * USERCMD_HZ ) {  // dezo2
 			return false;
 		}
 		return true;

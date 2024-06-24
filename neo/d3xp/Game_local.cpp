@@ -4913,10 +4913,12 @@ void idGameLocal::ComputeSlowMsec() {
 
 	// do any necessary ramping
 	if ( slowmoState == SLOWMO_STATE_RAMPUP ) {
-		delta = 4 - slowmoMsec;
+		//delta = 4 - slowmoMsec;
+		delta = (float)USERCMD_MSEC / 4 - slowmoMsec;  // dezo2
 
 		if ( fabs( delta ) < g_slowmoStepRate.GetFloat() ) {
-			slowmoMsec = 4;
+			//slowmoMsec = 4;
+			slowmoMsec = (float)USERCMD_MSEC / 4;  // dezo2
 			slowmoState = SLOWMO_STATE_ON;
 		}
 		else {
@@ -4928,10 +4930,12 @@ void idGameLocal::ComputeSlowMsec() {
 		}
 	}
 	else if ( slowmoState == SLOWMO_STATE_RAMPDOWN ) {
-		delta = 16 - slowmoMsec;
+		//delta = 16 - slowmoMsec;
+		delta = USERCMD_MSEC - slowmoMsec;  // dezo2
 
 		if ( fabs( delta ) < g_slowmoStepRate.GetFloat() ) {
-			slowmoMsec = 16;
+			//slowmoMsec = 16;
+			slowmoMsec = USERCMD_MSEC;  // dezo2
 			slowmoState = SLOWMO_STATE_OFF;
 			if ( gameSoundWorld ) {
 				gameSoundWorld->SetSlowmo( false );

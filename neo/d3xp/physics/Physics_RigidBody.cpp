@@ -38,7 +38,8 @@ If you have questions concerning this license or the applicable additional terms
 CLASS_DECLARATION( idPhysics_Base, idPhysics_RigidBody )
 END_CLASS
 
-const float STOP_SPEED		= 10.0f;
+//const float STOP_SPEED		= 10.0f;
+const float STOP_SPEED = 10.0f * 60.0f / (float)USERCMD_HZ;  // dezo2
 
 
 #undef RB_TIMINGS
