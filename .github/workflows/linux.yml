@@ -1,0 +1,60 @@
+name: Testbuild for Linux
+run-name: testbuild_linux
+on:
+  push:
+    branches:
+      - 'master'
+      - 'gh-build'
+  pull_request:
+    types:
+      - edited
+      - opened
+      - synchronize
+concurrency:
+  # Cancel concurrent workflows for the same PR or commit hash.
+  group: ${{github.workflow}}-${{github.event_name == 'pull_request' && github.head_ref || github.sha}}
+  cancel-in-progress: true
+jobs:
+  build_ubuntu_x86_64:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: ubuntu
+    steps:
+    - name: Install build dependencies
+      run: |
+        sudo apt update
+        sudo apt install libgl1-mesa-dev libsdl2-dev libopenal-dev libcurl4-openssl-dev cmake ninja-build
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - name: Build
+      run: |
+        mkdir build
+        cd build
+        # -DFORCE_COLORED_OUTPUT=ON ? didn't seem to work, or at least not visible on website
+        cmake -G Ninja -DDEDICATED=ON ../neo/
+        ninja
+    - name: Create testbuild package
+      run: |
+        # Create release directory tree
+        mkdir -p publish/dhewm3-linux-${{github.sha}}/base
+        mkdir publish/dhewm3-linux-${{github.sha}}/d3xp
+        # Copy release assets
+        cd build
+        cp dhewm3 dhewm3ded base.so d3xp.so ../publish/dhewm3-linux-${{github.sha}}/
+        cd ..
+        # Copy misc assets
+        cp base/gamepad.cfg publish/dhewm3-linux-${{github.sha}}/base/
+        cp base/gamepad-d3xp.cfg publish/dhewm3-linux-${{github.sha}}/d3xp/
+        cp COPYING.txt publish/dhewm3-linux-${{github.sha}}/
+        cp README.md publish/dhewm3-linux-${{github.sha}}/README.txt
+        cp Changelog.md publish/dhewm3-linux-${{github.sha}}/Changelog.txt
+        cp Configuration.md publish/dhewm3-linux-${{github.sha}}/Configuration.txt
+    - name: Upload testbuild package
+      uses: actions/upload-artifact@v4
+      with:
+        name: dhewm3-linux-${{github.sha}}
+        path: publish/
+        if-no-files-found: error
