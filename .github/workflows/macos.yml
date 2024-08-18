@@ -1,0 +1,59 @@
+name: Testbuild for MacOS
+run-name: testbuild_macos
+on:
+  push:
+    branches:
+      - 'master'
+      - 'gh-build'
+  pull_request:
+    types:
+      - edited
+      - opened
+      - synchronize
+concurrency:
+  # Cancel concurrent workflows for the same PR or commit hash.
+  group: ${{github.workflow}}-${{github.event_name == 'pull_request' && github.head_ref || github.sha}}
+  cancel-in-progress: true
+jobs:
+  build_macos_aarch64:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: macos
+    steps:
+    - name: Install build dependencies
+      run: |
+        brew update
+        brew install sdl2 openal-soft make cmake
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - name: Build
+      run: |
+        mkdir build
+        cmake -DDEDICATED=ON -DOPENAL_LIBRARY="/opt/homebrew/opt/openal-soft/lib/libopenal.dylib" -DOPENAL_INCLUDE_DIR="/opt/homebrew/opt/openal-soft/include" -S neo/ -B build
+        cmake --build build
+    - name: Create testbuild package
+      run: |
+        # Create release directory tree
+        mkdir -p publish/dhewm3-macos-${{github.sha}}/base
+        mkdir publish/dhewm3-macos-${{github.sha}}/d3xp
+        # Copy release assets
+        cd build
+        ls
+        cp dhewm3 dhewm3ded base.dylib d3xp.dylib ../publish/dhewm3-macos-${{github.sha}}/
+        cd ..
+        # Copy misc assets
+        cp base/gamepad.cfg publish/dhewm3-macos-${{github.sha}}/base/
+        cp base/gamepad-d3xp.cfg publish/dhewm3-macos-${{github.sha}}/d3xp/
+        cp COPYING.txt publish/dhewm3-macos-${{github.sha}}/
+        cp README.md publish/dhewm3-macos-${{github.sha}}/README.txt
+        cp Changelog.md publish/dhewm3-macos-${{github.sha}}/Changelog.txt
+        cp Configuration.md publish/dhewm3-macos-${{github.sha}}/Configuration.txt
+    - name: Upload testbuild package
+      uses: actions/upload-artifact@v4
+      with:
+        name: quake2-macos-${{github.sha}}
+        path: publish/
+        if-no-files-found: error
