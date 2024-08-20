@@ -48,29 +48,31 @@ jobs:
         cmake -A Win32 -DDHEWM3LIBS="../dhewm3-libs-master/i686-w64-mingw32/" -DDEDICATED=ON -DTOOLS=ON -S neo/ -B build
         time cmake --build build/ --config RelWithDebInfo
     - name: Create testbuild package
+      env:
+        pkgdir: echo "dhewm3-win32-$(git rev-parse --short HEAD)"
       run: |
         # Create release directory tree
-        mkdir -p publish/dhewm3-win32-${{github.sha}}/base
-        mkdir publish/dhewm3-win32-${{github.sha}}/d3xp
+        mkdir -p publish/${{ env.pkgdir }}/base
+        mkdir publish/${{ env.pkgdir }}/d3xp
         # Copy release assets
         cd build/RelWithDebInfo
-        cp dhewm3.exe dhewm3ded.exe base.dll d3xp.dll ../../publish/dhewm3-win32-${{github.sha}}/
+        cp dhewm3.exe dhewm3ded.exe base.dll d3xp.dll ../../publish/${{ env.pkgdir }}/
         cd ../..
         # Copy misc assets
-        cp base/gamepad.cfg publish/dhewm3-win32-${{github.sha}}/base/
-        cp base/gamepad-d3xp.cfg publish/dhewm3-win32-${{github.sha}}/d3xp/
-        cp COPYING.txt publish/dhewm3-win32-${{github.sha}}/
-        cp README.md publish/dhewm3-win32-${{github.sha}}/README.txt
-        cp Changelog.md publish/dhewm3-win32-${{github.sha}}/Changelog.txt
-        cp Configuration.md publish/dhewm3-win32-${{github.sha}}/Configuration.txt
+        cp base/gamepad.cfg publish/${{ env.pkgdir }}/base/
+        cp base/gamepad-d3xp.cfg publish/${{ env.pkgdir }}/d3xp/
+        cp COPYING.txt publish/${{ env.pkgdir }}/
+        cp README.md publish/${{ env.pkgdir }}/README.txt
+        cp Changelog.md publish/${{ env.pkgdir }}/Changelog.txt
+        cp Configuration.md publish/${{ env.pkgdir }}/Configuration.txt
         # copy runtime libraries (SDL, OpenAL, cURL)
         cd ../dhewm3-libs-master/i686-w64-mingw32/bin/
-        cp OpenAL32.dll SDL2.dll libcurl-4.dll ../../../dhewm3/publish/dhewm3-win32-${{github.sha}}/
+        cp OpenAL32.dll SDL2.dll libcurl-4.dll ../../../dhewm3/publish/${{ env.pkgdir }}/
         cd -
     - name: Upload testbuild package
       uses: actions/upload-artifact@v4
       with:
-        name: dhewm3-win32-${{github.sha}}
+        name: ${{ env.pkgdir }}
         path: publish/
         if-no-files-found: error
   build_win_x86_64_msvc:
