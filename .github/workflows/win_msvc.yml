@@ -1,5 +1,5 @@
-name: Testbuild for x86 Windows
-run-name: testbuild_win32
+name: Testbuild for x86 and x86_64 Windows
+run-name: testbuild_windows
 on:
   push:
     branches:
@@ -23,9 +23,6 @@ jobs:
         shell: bash
     strategy:
       fail-fast: false
-      #matrix:
-      #  include:
-      #    - env: ubuntu # TODO
     steps:
     - name: Install build dependencies
       run: |
@@ -74,5 +71,63 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: dhewm3-win32-${{github.sha}}
+        path: publish/
+        if-no-files-found: error
+  build_win_x86_64_msvc:
+    runs-on: windows-latest
+    defaults:
+      run:
+        # use git bash for for all steps (unless specified otherwise per step)
+        shell: bash
+    strategy:
+      fail-fast: false
+    steps:
+    - name: Install build dependencies
+      run: |
+        # Download and extract dhewm3-libs
+        #echo $PWD # /d/a/dhewm3/dhewm3
+        # as the repo will be cloned into the directory we're currently in (O_o)
+        # go one directory up to D:\a\dhewm3\ and put the dhewm3libs there
+        cd ..
+        # https://github.com/dhewm/dhewm3-libs/archive/refs/heads/master.zip
+        # for some reason the following downloads an empty file, so use the other URL I got from
+        # "Copy Download Link" in Firefox (after downloading the file there) instead
+        #curl -o dhewm3libs.zip https://github.com/dhewm/dhewm3-libs/archive/refs/heads/master.zip
+        curl -o dhewm3libs.zip https://codeload.github.com/dhewm/dhewm3-libs/zip/refs/heads/master
+        # only unpack the stuff needed (no i686 stuff, no docs from share/)
+        unzip dhewm3libs.zip "dhewm3-libs-master/x86_64-w64-mingw32/**" -x "dhewm3-libs-master/x86_64-w64-mingw32/share/**"
+    - name: Check out repository code
+      uses: actions/checkout@v4
+    - name: Build
+      run: |
+        # build with cmake and visual studio
+        #echo $PWD # /d/a/dhewm3/dhewm3
+        # NOTE: not setting -G "Visual Studio 17 2022" so it just uses the default VS version it can find
+        cmake -A x64 -DDHEWM3LIBS="../dhewm3-libs-master/x86_64-w64-mingw32/" -DDEDICATED=ON -DTOOLS=ON -S neo/ -B build
+        time cmake --build build/ --config RelWithDebInfo
+    - name: Create testbuild package
+      run: |
+        # Create release directory tree
+        mkdir -p publish/dhewm3-win64-${{github.sha}}/base
+        mkdir publish/dhewm3-win64-${{github.sha}}/d3xp
+        # Copy release assets
+        cd build/RelWithDebInfo
+        cp dhewm3.exe dhewm3ded.exe base.dll d3xp.dll ../../publish/dhewm3-win64-${{github.sha}}/
+        cd ../..
+        # Copy misc assets
+        cp base/gamepad.cfg publish/dhewm3-win64-${{github.sha}}/base/
+        cp base/gamepad-d3xp.cfg publish/dhewm3-win64-${{github.sha}}/d3xp/
+        cp COPYING.txt publish/dhewm3-win64-${{github.sha}}/
+        cp README.md publish/dhewm3-win64-${{github.sha}}/README.txt
+        cp Changelog.md publish/dhewm3-win64-${{github.sha}}/Changelog.txt
+        cp Configuration.md publish/dhewm3-win64-${{github.sha}}/Configuration.txt
+        # copy runtime libraries (SDL, OpenAL, cURL)
+        cd ../dhewm3-libs-master/x86_64-w64-mingw32/bin/
+        cp OpenAL32.dll SDL2.dll libcurl-4.dll ../../../dhewm3/publish/dhewm3-win64-${{github.sha}}/
+        cd -
+    - name: Upload testbuild package
+      uses: actions/upload-artifact@v4
+      with:
+        name: dhewm3-win64-${{github.sha}}
         path: publish/
         if-no-files-found: error
