@@ -76,7 +76,7 @@ public:
 	idList<int>			parmSize;
 };
 
-typedef union eval_s {
+typedef struct eval_s { // XXX: was union
 	const char			*stringPtr;
 	float				_float;
 	float				vector[ 3 ];
@@ -294,7 +294,15 @@ defined in script.
 
 ***********************************************************************/
 
-typedef union varEval_s {
+// add an unused pointer before the actually used int
+// to make sure it doesn't alias the pointer types
+// (on 64bit platforms, whether the 32bit int would alias their first
+//  or second 4 bytes of the pointer depends on endianess)
+#define MY_PADDED_INT(NAME) \
+	struct { void* _pad_ ## NAME; int NAME; }
+
+
+typedef union varEval_s { // XXX: or this?
 	idScriptObject			**objectPtrPtr;
 	char					*stringPtr;
 	float					*floatPtr;
@@ -303,12 +311,19 @@ typedef union varEval_s {
 	int						*intPtr;
 	byte					*bytePtr;
 	int						*entityNumberPtr;
-	int						virtualFunction;
-	int						jumpOffset;
-	int						stackOffset;		// offset in stack for local variables
-	int						argSize;
+	//int						virtualFunction;
+	//int						jumpOffset;
+	//int						stackOffset;		// offset in stack for local variables
+	//int						argSize;
+	MY_PADDED_INT(virtualFunction);
+	MY_PADDED_INT(jumpOffset);
+	MY_PADDED_INT(stackOffset);
+	MY_PADDED_INT(argSize);
 	varEval_s				*evalPtr;
-	int						ptrOffset;
+	//int						ptrOffset;
+	MY_PADDED_INT(ptrOffset);
+
+	unsigned long _init = 0xfffffffffffffffful;
 } varEval_t;
 
 class idVarDefName;

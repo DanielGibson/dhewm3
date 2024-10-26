@@ -296,7 +296,7 @@ typedef struct st_lwClip {
 	  lwClipAnim     anim;
 	  lwClipXRef     xref;
 	  lwClipCycle    cycle;
-   }              source;
+   }              source; // XXX: this?
    float          start_time;
    float          duration;
    float          frame_rate;

@@ -164,7 +164,9 @@ typedef struct {
 	frameCommandType_t		type;
 	idStr					*string;
 
-	union {
+	//union
+	struct
+	{ // XXX: this?
 		const idSoundShader	*soundShader;
 		const function_t	*function;
 		const idDeclSkin	*skin;
