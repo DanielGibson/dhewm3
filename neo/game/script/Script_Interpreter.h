@@ -135,6 +135,7 @@ ID_INLINE void idInterpreter::PopParms( int numParms ) {
 	}
 
 	localstackUsed -= numParms;
+	// TODO: make sure it's multiple of intptr_t?
 }
 
 /*
@@ -146,7 +147,11 @@ ID_INLINE void idInterpreter::Push( intptr_t value ) {
 	if ( localstackUsed + sizeof( intptr_t ) > LOCALSTACK_SIZE ) {
 		Error( "Push: locals stack overflow\n" );
 	}
-	*( intptr_t * )&localstack[ localstackUsed ]	= value;
+	//*( intptr_t * )&localstack[ localstackUsed ]	= value;
+	intptr_t * stackVar = ( intptr_t * )&localstack[ localstackUsed ];
+	uintptr_t addr = (uintptr_t)stackVar;
+	assert(addr % sizeof(uintptr_t) == 0 && "unaligned Push()");
+	*stackVar = value;
 	localstackUsed += sizeof( intptr_t );
 }
 
@@ -239,6 +244,8 @@ idInterpreter::GetVariable
 ID_INLINE varEval_t idInterpreter::GetVariable( idVarDef *def ) {
 	if ( def->initialized == idVarDef::stackVariable ) {
 		varEval_t val;
+		uintptr_t addr = (uintptr_t)&localstack[ localstackBase + def->value.stackOffset ];
+		assert(addr % sizeof(int) == 0 && "unaligned in GetVariable()");
 		val.intPtr = ( int * )&localstack[ localstackBase + def->value.stackOffset ];
 		return val;
 	} else {

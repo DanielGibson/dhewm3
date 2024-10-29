@@ -291,6 +291,8 @@ bool idInterpreter::GetRegisterValue( const char *name, idStr &out, int scopeDep
 		idEntity*		entity;			
 		idScriptObject*	obj;
 		
+		uintptr_t addr = 0;
+
 		if ( scope == &def_namespace ) {
 			// should never happen, but handle it safely anyway
 			return false;
@@ -311,10 +313,14 @@ bool idInterpreter::GetRegisterValue( const char *name, idStr &out, int scopeDep
 		switch ( field->Type() ) {
 			case ev_boolean:
 				out = va( "%d", *( reinterpret_cast<int *>( &obj->data[ reg.ptrOffset ] ) ) );
+				addr = (uintptr_t)&obj->data[ reg.ptrOffset ];
+				assert(addr % sizeof(int) == 0);
 				return true;
 
 			case ev_float:
 				out = va( "%g", *( reinterpret_cast<float *>( &obj->data[ reg.ptrOffset ] ) ) );
+				addr = (uintptr_t)&obj->data[ reg.ptrOffset ];
+				assert(addr % sizeof(float) == 0);
 				return true;
 				
 			case ev_string:	{
@@ -552,8 +558,11 @@ void idInterpreter::ThreadCall( idInterpreter *source, const function_t *func, i
 
 	memcpy( localstack, &source->localstack[ source->localstackUsed - args ], args );
 
+	// TODO: alignment?
+
 	localstackUsed = args;
 	localstackBase = 0;
+	assert(localstackUsed % sizeof(intptr_t) == 0 && "unaligned ThreadCall()");
 
 	maxLocalstackUsed = localstackUsed;
 	EnterFunction( func, false );
@@ -649,6 +658,8 @@ void idInterpreter::EnterFunction( const function_t *func, bool clearStack ) {
 
 	localstackUsed += c;
 	localstackBase = localstackUsed - func->locals;
+	assert(localstackUsed % sizeof(intptr_t) == 0 && "unaligned EnterFunction()");
+	assert(localstackBase % sizeof(intptr_t) == 0 && "unaligned EnterFunction()");
 
 	if ( localstackUsed > maxLocalstackUsed ) {
 		maxLocalstackUsed = localstackUsed ;
@@ -706,6 +717,7 @@ void idInterpreter::LeaveFunction( idVarDef *returnDef ) {
 	currentFunction = stack->f;
 	localstackBase = stack->stackbase;
 	NextInstruction( stack->s );
+	assert(localstackBase % sizeof(intptr_t) == 0 && "unaligned LeaveFunction()");
 
 	if ( !callStackDepth ) {
 		// all done
@@ -1507,6 +1519,8 @@ bool idInterpreter::Execute( void ) {
 			if ( obj ) {
 				var.bytePtr = &obj->data[ st->b->value.ptrOffset ];
 				( *var.floatPtr )++;
+				uintptr_t addr = (uintptr_t)var.bytePtr;
+				assert(addr % sizeof(float) == 0);
 			}
 			break;
 
@@ -1521,6 +1535,8 @@ bool idInterpreter::Execute( void ) {
 			if ( obj ) {
 				var.bytePtr = &obj->data[ st->b->value.ptrOffset ];
 				( *var.floatPtr )--;
+				uintptr_t addr = (uintptr_t)var.bytePtr;
+				assert(addr % sizeof(float) == 0);
 			}
 			break;
 
@@ -1739,6 +1755,8 @@ bool idInterpreter::Execute( void ) {
 			obj = GetScriptObject( *var_a.entityNumberPtr );
 			if ( obj ) {
 				var_c.evalPtr->bytePtr = &obj->data[ st->b->value.ptrOffset ];
+				uintptr_t addr = (uintptr_t)var_c.evalPtr->bytePtr;
+				assert(addr % sizeof(intptr_t) == 0);
 			} else {
 				var_c.evalPtr->bytePtr = NULL;
 			}
@@ -1751,6 +1769,8 @@ bool idInterpreter::Execute( void ) {
 			if ( obj ) {
 				var.bytePtr = &obj->data[ st->b->value.ptrOffset ];
 				*var_c.floatPtr = *var.floatPtr;
+				uintptr_t addr = (uintptr_t)var.bytePtr;
+				assert(addr % sizeof(float) == 0);
 			} else {
 				*var_c.floatPtr = 0.0f;
 			}
@@ -1763,6 +1783,8 @@ bool idInterpreter::Execute( void ) {
 			if ( obj ) {
 				var.bytePtr = &obj->data[ st->b->value.ptrOffset ];
 				*var_c.entityNumberPtr = *var.entityNumberPtr;
+				uintptr_t addr = (uintptr_t)var.bytePtr;
+				assert(addr % sizeof(int) == 0);
 			} else {
 				*var_c.entityNumberPtr = 0;
 			}
@@ -1775,6 +1797,8 @@ bool idInterpreter::Execute( void ) {
 			if ( obj ) {
 				var.bytePtr = &obj->data[ st->b->value.ptrOffset ];
 				*var_c.intPtr = *var.intPtr;
+				uintptr_t addr = (uintptr_t)var.bytePtr;
+				assert(addr % sizeof(int) == 0);
 			} else {
 				*var_c.intPtr = 0;
 			}
@@ -1798,6 +1822,8 @@ bool idInterpreter::Execute( void ) {
 			if ( obj ) {
 				var.bytePtr = &obj->data[ st->b->value.ptrOffset ];
 				*var_c.vectorPtr = *var.vectorPtr;
+				uintptr_t addr = (uintptr_t)var.bytePtr;
+				assert(addr % sizeof(float) == 0); // TODO what should this really be aligned to?
 			} else {
 				var_c.vectorPtr->Zero();
 			}
@@ -1812,6 +1838,8 @@ bool idInterpreter::Execute( void ) {
 			} else {
 				var.bytePtr = &obj->data[ st->b->value.ptrOffset ];
 				*var_c.entityNumberPtr = *var.entityNumberPtr;
+				uintptr_t addr = (uintptr_t)var.bytePtr;
+				assert(addr % sizeof(int) == 0);
 			}
 			break;
 

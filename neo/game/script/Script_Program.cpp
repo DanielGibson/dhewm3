@@ -654,7 +654,12 @@ void idVarDef::SetObject( idScriptObject *object ) {
 	assert( typeDef );
 	initialized = initialized;
 	assert( typeDef->Inherits( &type_object ) );
-	*value.objectPtrPtr = object;
+	// DG: *value.objectPtrPtr might be unaligned on 64bit, so use memcpy()
+	// (though I'm not sure if this is even used, the only place objectPtrPtr is ever used is here..)
+	uintptr_t addr = (uintptr_t)*value.objectPtrPtr;
+	assert(addr % sizeof(intptr_t) == 0 && "SetObject() unaligned");
+	memcpy(value.objectPtrPtr, object, sizeof(object));
+	//*value.objectPtrPtr = object;
 }
 
 /*
@@ -1249,6 +1254,8 @@ byte *idProgram::ReserveMem(int size) {
 	}
 
 	memset( res, 0, size );
+	uintptr_t addr = (uintptr_t)res;
+	assert(addr % sizeof(intptr_t) == 0);
 
 	return res;
 }

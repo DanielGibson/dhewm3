@@ -2092,6 +2092,8 @@ void idCompiler::ParseObjectDef( const char *objname ) {
 		}
 	} while( !CheckToken( "}" ) );
 
+	assert(objtype->Size() % sizeof(intptr_t) == 0 && "ParseObjectDef() unaligned");
+
 	scope = oldscope;
 
 	ExpectToken( ";" );
