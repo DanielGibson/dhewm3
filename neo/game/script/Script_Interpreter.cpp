@@ -794,24 +794,41 @@ void idInterpreter::CallEvent( const function_t *func, int argsize ) {
 
 	format = evdef->GetArgFormat();
 	for( j = 0, i = 0, pos = type_object.Size(); ( pos < argsize ) || ( format[ i ] != 0 ); i++ ) {
+
+		// FIXME: for callbacks with ints, data[i] is used directly, which is intptr_t
+		//        so at least for ints it should just be data[i] = whatever; instead of fucking around with casts
+
+		// FIXME: the callbacks only seem to handle int and float, not vector or string etc?!
+
 		switch( format[ i ] ) {
 		case D_EVENT_INTEGER :
 			var.intPtr = ( int * )&localstack[ start + pos ];
-			( *( int * )&data[ i ] ) = int( *var.floatPtr );
+			//( *( int * )&data[ i ] ) = int( *var.floatPtr );
+			// NOTE: Callbacks.cpp passes data[i] for all int and pointer types
+			//       so ints must be assigned directly, esp. for them to work with big endian
+			data[i] = int( *var.floatPtr ); // FIXME: why floatPtr?
 			break;
 
 		case D_EVENT_FLOAT :
 			var.intPtr = ( int * )&localstack[ start + pos ];
+			// NOTE: floats are the only arguments not passed as pointer (or int stored in intptr_t)
+			//       so only here we don't assign to data directly
 			( *( float * )&data[ i ] ) = *var.floatPtr;
 			break;
 
 		case D_EVENT_VECTOR :
-			var.intPtr = ( int * )&localstack[ start + pos ];
-			( *( idVec3 ** )&data[ i ] ) = var.vectorPtr;
+			//var.intPtr = ( int * )&localstack[ start + pos ];
+			//( *( idVec3 ** )&data[ i ] ) = var.vectorPtr;
+			// localstack contains the actual idVec3 (+padding),
+			// data[i] is supposed to be a pointer to that idVec3
+			data[i] = (intptr_t)&localstack[ start + pos ];
 			break;
 
 		case D_EVENT_STRING :
-			( *( const char ** )&data[ i ] ) = ( char * )&localstack[ start + pos ];
+			//( *( const char ** )&data[ i ] ) = ( char * )&localstack[ start + pos ];
+			// localstack contains the actual string (always MAX_STRING_LEN chars)
+			// data[i] is supposed to be a pointer to that (basically a const char*)
+			data[i] = ( intptr_t )&localstack[ start + pos ];
 			break;
 
 		case D_EVENT_ENTITY :
@@ -839,7 +856,10 @@ void idInterpreter::CallEvent( const function_t *func, int argsize ) {
 
 		case D_EVENT_ENTITY_NULL :
 			var.intPtr = ( int * )&localstack[ start + pos ];
-			( *( idEntity ** )&data[ i ] ) = GetEntity( *var.entityNumberPtr );
+			//( *( idEntity ** )&data[ i ] ) = GetEntity( *var.entityNumberPtr );
+			// localstack contains the entitynumber as int,
+			// data[i] is supposed to be a pointer to the entity
+			data[i] = (intptr_t)GetEntity( *var.entityNumberPtr );
 			break;
 
 		case D_EVENT_TRACE :
@@ -939,21 +959,32 @@ void idInterpreter::CallSysEvent( const function_t *func, int argsize ) {
 		switch( format[ i ] ) {
 		case D_EVENT_INTEGER :
 			source.intPtr = ( int * )&localstack[ start + pos ];
-			*( int * )&data[ i ] = int( *source.floatPtr );
+			//*( int * )&data[ i ] = int( *source.floatPtr );
+			// NOTE: Callbacks.cpp passes data[i] for all int and pointer types
+			//       so ints must be assigned directly, esp. for them to work with big endian
+			data[i] = int( *source.floatPtr ); // FIXME: why floatPtr?
 			break;
 
 		case D_EVENT_FLOAT :
 			source.intPtr = ( int * )&localstack[ start + pos ];
+			// NOTE: floats are the only arguments not passed as pointer (or int stored in intptr_t)
+			//       so only here we don't assign to data directly
 			*( float * )&data[ i ] = *source.floatPtr;
 			break;
 
 		case D_EVENT_VECTOR :
-			source.intPtr = ( int * )&localstack[ start + pos ];
-			*( idVec3 ** )&data[ i ] = source.vectorPtr;
+			//source.intPtr = ( int * )&localstack[ start + pos ];
+			//*( idVec3 ** )&data[ i ] = source.vectorPtr;
+			// localstack contains the actual idVec3 (+padding),
+			// data[i] is supposed to be a pointer to that idVec3
+			data[i] = (intptr_t)&localstack[ start + pos ];
 			break;
 
 		case D_EVENT_STRING :
-			*( const char ** )&data[ i ] = ( char * )&localstack[ start + pos ];
+			// *( const char ** )&data[ i ] = ( char * )&localstack[ start + pos ];
+			// localstack contains the actual string (always MAX_STRING_LEN chars)
+			// data[i] is supposed to be a pointer to that
+			data[i] = ( intptr_t )&localstack[ start + pos ];
 			break;
 
 		case D_EVENT_ENTITY :
@@ -980,7 +1011,10 @@ void idInterpreter::CallSysEvent( const function_t *func, int argsize ) {
 
 		case D_EVENT_ENTITY_NULL :
 			source.intPtr = ( int * )&localstack[ start + pos ];
-			*( idEntity ** )&data[ i ] = GetEntity( *source.entityNumberPtr );
+			//*( idEntity ** )&data[ i ] = GetEntity( *source.entityNumberPtr );
+			// localstack contains the entitynumber as int,
+			// data[i] is supposed to be a pointer to the entity
+			data[i] = (intptr_t)GetEntity( *source.entityNumberPtr );
 			break;
 
 		case D_EVENT_TRACE :
