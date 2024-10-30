@@ -147,11 +147,29 @@ ID_INLINE void idInterpreter::Push( intptr_t value ) {
 	if ( localstackUsed + sizeof( intptr_t ) > LOCALSTACK_SIZE ) {
 		Error( "Push: locals stack overflow\n" );
 	}
+	int val = value;
+	assert(value == val); // DG: I *think* Push() is only ever called with 32bit ints, not pointers or such
+	//assert(value <= INT32_MAX && value >= INT32_MIN);
+	// dhewm3 used to store these values on localstack[] as intptr_t, even though they always seem to be int32
+	// unfortunately, all the code reading localstack[] gets the pointer
+	// to &localstack[ localstackUsed ] and then interprets that as int* or float* or whatever
+	// so with 64bit machines it's stored as the wrong size (intptr_t is int64, int is int32),
+	// and on Big Endian the values are just 0 (on little endian the first 4 bytes are the
+	// ones with actual data so the bug was hidden)
+	int *stackVar = ( int * )&localstack[ localstackUsed ];
+	*stackVar = val;
+
 	//*( intptr_t * )&localstack[ localstackUsed ]	= value;
-	intptr_t * stackVar = ( intptr_t * )&localstack[ localstackUsed ];
+
 	uintptr_t addr = (uintptr_t)stackVar;
+#if D3_SIZEOFPTR == 8
+	// set the remaining 4 bytes to 0 (every stack entry still has a multiple of sizeof(intptr_t) bytes)
+	++stackVar;
+	*stackVar = 0;
+#endif
+
 	assert(addr % sizeof(uintptr_t) == 0 && "unaligned Push()");
-	*stackVar = value;
+
 	localstackUsed += sizeof( intptr_t );
 }
 
