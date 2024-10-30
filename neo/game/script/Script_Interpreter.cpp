@@ -815,15 +815,27 @@ void idInterpreter::CallEvent( const function_t *func, int argsize ) {
 			break;
 
 		case D_EVENT_ENTITY :
-			var.intPtr = ( int * )&localstack[ start + pos ];
-			( *( idEntity ** )&data[ i ] ) = GetEntity( *var.entityNumberPtr );
-			if ( !( *( idEntity ** )&data[ i ] ) ) {
-				Warning( "Entity not found for event '%s'. Terminating thread.", evdef->GetName() );
+		{
+			//var.intPtr = ( int * )&localstack[ start + pos ];
+			//( *( idEntity ** )&data[ i ] ) = GetEntity( *var.entityNumberPtr );
+			var.entityNumberPtr = ( int * )&localstack[ start + pos ];
+			uintptr_t addr = (uintptr_t)var.entityNumberPtr;
+			assert(addr % sizeof(int) == 0 && "unaligned in CallEvent()");
+			idEntity *ent = GetEntity( *var.entityNumberPtr );
+			data[i] = (intptr_t)ent;
+			assert(data[i] == (intptr_t)ent);
+			addr = data[i];
+			assert(addr % sizeof(uintptr_t) == 0 && "unaligned entity ptr in CallEvent()");
+			//if ( !( *( idEntity ** )&data[ i ] ) ) { // XXX
+			if ( ent == NULL ) {
+				Warning( "CallEvent(): Entity %d not found for event '%s'. Terminating thread. start = %d pos = %d argsize = %d",
+				         *var.entityNumberPtr, evdef->GetName(), start, pos, argsize );
 				threadDying = true;
 				PopParms( argsize );
 				return;
 			}
 			break;
+		}
 
 		case D_EVENT_ENTITY_NULL :
 			var.intPtr = ( int * )&localstack[ start + pos ];
@@ -945,15 +957,26 @@ void idInterpreter::CallSysEvent( const function_t *func, int argsize ) {
 			break;
 
 		case D_EVENT_ENTITY :
-			source.intPtr = ( int * )&localstack[ start + pos ];
-			*( idEntity ** )&data[ i ] = GetEntity( *source.entityNumberPtr );
-			if ( !*( idEntity ** )&data[ i ] ) {
-				Warning( "Entity not found for event '%s'. Terminating thread.", evdef->GetName() );
+		{
+			source.entityNumberPtr = ( int * )&localstack[ start + pos ];
+			uintptr_t addr = (uintptr_t)source.entityNumberPtr;
+			assert(addr % sizeof(int) == 0 && "unaligned in CallSysEvent()");
+			idEntity *ent = GetEntity( *source.entityNumberPtr );
+			//*( idEntity ** )&data[ i ] = GetEntity( *source.entityNumberPtr ); // XXX
+			//if ( !*( idEntity ** )&data[ i ] ) {
+			data[i] = (intptr_t)ent;
+			assert(data[i] == (intptr_t)ent);
+			addr = data[i];
+			assert(addr % sizeof(uintptr_t) == 0 && "unaligned entity ptr in CallSysEvent()");
+			if ( ent == NULL ) {
+				Warning( "CallSysEvent(): Entity %d not found for event '%s'. Terminating thread. start = %d pos = %d argsize = %d",
+				         *source.entityNumberPtr, evdef->GetName(), start, pos, argsize );
 				threadDying = true;
 				PopParms( argsize );
 				return;
 			}
 			break;
+		}
 
 		case D_EVENT_ENTITY_NULL :
 			source.intPtr = ( int * )&localstack[ start + pos ];
