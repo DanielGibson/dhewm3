@@ -120,7 +120,7 @@ int				time_gameDraw;
 int				time_frontend;			// renderSystem frontend time
 int				time_backend;			// renderSystem backend time
 
-int				com_frameTime;			// time for the current frame in milliseconds
+int				com_frameTime;			// time (since start) for the current frame in milliseconds - TODO: DG: make it double?
 int				com_frameNumber;		// variable frame number
 volatile int	com_ticNumber;			// 60 hz tics
 int				com_editors;			// currently opened editor(s)
@@ -246,11 +246,28 @@ private:
 	idCompressor *				config_compressor;
 #endif
 
-	SDL_TimerID					async_timer;
+	static int					AsyncThread(void* arg);
+	xthreadInfo					asyncThread;
+	volatile bool				runAsyncThread;
 };
 
 idCommonLocal	commonLocal;
 idCommon *		common = &commonLocal;
+
+// DG: updates com_frameTime based on the current tic number and USERCMD_MSEC (com_gameFrameTime == 1000/com_gameHz)
+void Com_UpdateFrameTime() {
+	// It used to be just com_frameTime = com_ticNumber * USERCMD_MSEC;
+	// But now that USERCMD_MSEC isn't fixed to 16 for fixed 60fps anymore (thanks to com_gameHz),
+	// that doesn't work anymore (com_frameTime would decrease when setting com_gameHz to a lower value!)
+	// So I moved updating it into a function (it's done in 3 places) that has just slightly more logic
+	// to ensure com_frameTime never decreases (well, until it overflows :-p)
+	static int lastTicNum = 0;
+	int ticNum = com_ticNumber;
+	int ticDiff = ticNum - lastTicNum;
+	assert(ticDiff >= 0);
+	com_frameTime += ticDiff * USERCMD_MSEC;
+	lastTicNum = ticNum;
+}
 
 /*
 ==================
@@ -275,7 +292,8 @@ idCommonLocal::idCommonLocal( void ) {
 	config_compressor = NULL;
 #endif
 
-	async_timer = 0;
+	memset( &asyncThread, 0, sizeof(asyncThread) );
+	runAsyncThread = false;
 }
 
 /*
@@ -2449,7 +2467,7 @@ void idCommonLocal::Frame( void ) {
 		// DG: prepare new ImGui frame - I guess this is a good place, as all new events should be available?
 		D3::ImGuiHooks::NewFrame();
 
-		com_frameTime = com_ticNumber * USERCMD_MSEC;
+		Com_UpdateFrameTime(); // DG: put updating com_frameTime into a function
 
 		idAsyncNetwork::RunFrame();
 
@@ -2495,7 +2513,7 @@ idCommonLocal::GUIFrame
 void idCommonLocal::GUIFrame( bool execCmd, bool network ) {
 	Sys_GenerateEvents();
 	eventLoop->RunEventLoop( execCmd );	// and execute any commands
-	com_frameTime = com_ticNumber * USERCMD_MSEC;
+	Com_UpdateFrameTime(); // DG: put updating com_frameTime into a function
 	if ( network ) {
 		idAsyncNetwork::RunFrame();
 	}
@@ -2532,8 +2550,8 @@ typedef struct {
 
 static const int MAX_ASYNC_STATS = 1024;
 asyncStats_t	com_asyncStats[MAX_ASYNC_STATS];		// indexed by com_ticNumber
-int prevAsyncMsec;
-int	lastTicMsec;
+static int	lastTicMsec;
+static int	nextTicTargetMsec; // when (according to Sys_Milliseconds()) the next async tic should start
 
 void idCommonLocal::SingleAsyncTic( void ) {
 	// main thread code can prevent this from happening while modifying
@@ -2584,6 +2602,7 @@ void idCommonLocal::Async( void ) {
 	if ( !com_preciseTic.GetBool() ) {
 		// just run a single tic, even if the exact msec isn't precise
 		SingleAsyncTic();
+		nextTicTargetMsec = msec + USERCMD_MSEC;
 		return;
 	}
 
@@ -2609,6 +2628,7 @@ void idCommonLocal::Async( void ) {
 		SingleAsyncTic();
 		lastTicMsec += ticMsec;
 	}
+	nextTicTargetMsec = lastTicMsec + ticMsec;
 }
 
 /*
@@ -2818,26 +2838,23 @@ void idCommonLocal::SetMachineSpec( void ) {
 	}
 }
 
-#if SDL_VERSION_ATLEAST(3, 0, 0)
-static Uint32 AsyncTimer(void * /*userdata*/, SDL_TimerID /* timerID */, Uint32 interval)
-#else // SDL2 or SDL1.2
-static unsigned int AsyncTimer(unsigned int interval, void *)
-#endif
+
+int idCommonLocal::AsyncThread(void* arg)
 {
-	common->Async();
-	Sys_TriggerEvent(TRIGGER_EVENT_ONE);
+	idCommonLocal* self = (idCommonLocal*)arg;
 
-	// calculate the next interval to get as close to 60fps as possible
-	unsigned int now = SDL_GetTicks();
-	unsigned int tick = com_ticNumber * USERCMD_MSEC;
-	// FIXME: this is pretty broken and basically always returns 1 because now now is much bigger than tic
-	//        (probably com_tickNumber only starts incrementing a second after engine starts?)
-	//        only reason this works is common->Async() checking again before calling SingleAsyncTic()
+	while ( self->runAsyncThread ) {
 
-	if (now >= tick)
-		return 1;
+		self->Async();
 
-	return tick - now;
+		Sys_TriggerEvent(TRIGGER_EVENT_ONE);
+
+		// TODO: -1 is so we don't sleep too long - would -2 be better, or can we have a more precise sleep?
+		//       IIRC especially on Windows sleeping is imprecise by at least on MS
+		int sleepTime = Max( 0, nextTicTargetMsec - (int)Sys_Milliseconds() - 1 );
+		Sys_Sleep( sleepTime );
+	}
+	return 0;
 }
 
 #ifdef _WIN32
@@ -3121,10 +3138,8 @@ void idCommonLocal::Init( int argc, char **argv ) {
 		Sys_Error( "Error during initialization" );
 	}
 
-	async_timer = SDL_AddTimer(USERCMD_MSEC, AsyncTimer, NULL);
-
-	if (!async_timer)
-		Sys_Error("Error while starting the async timer: %s", SDL_GetError());
+	runAsyncThread = true;
+	Sys_CreateThread( AsyncThread, this, asyncThread, "AsyncThread" );
 }
 
 
@@ -3134,9 +3149,10 @@ idCommonLocal::Shutdown
 =================
 */
 void idCommonLocal::Shutdown( void ) {
-	if (async_timer) {
-		SDL_RemoveTimer(async_timer);
-		async_timer = 0;
+	if ( asyncThread.threadHandle != NULL ) {
+		runAsyncThread = false;
+		Sys_DestroyThread( asyncThread );
+		memset( &asyncThread, 0, sizeof(asyncThread) );
 	}
 
 	idAsyncNetwork::server.Kill();
