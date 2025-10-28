@@ -28,6 +28,10 @@ extern idCVar imgui_style;
 extern idCVar r_customWidth;
 extern idCVar r_customHeight;
 
+extern float glimp_swaptimes[256];
+extern float glimp_frametimes[256];
+extern unsigned glimp_frameIndex;
+
 extern bool R_GetModeInfo( int *width, int *height, int mode );
 
 namespace {
@@ -2404,6 +2408,45 @@ void DrawGameOptionsMenu()
 }
 
 
+
+static void drawFpsInfo()
+{
+	//unsigned glimp_frameIndex;
+	//float glimp_frametimes[256]
+	float minTime = 100000;
+	float maxTime = 0;
+	float total = 0;
+	for ( float t : glimp_frametimes ) {
+		if ( t < minTime )
+			minTime = t;
+		if ( t > maxTime )
+			maxTime = t;
+
+		total += t;
+	}
+	float avg = total/256.0f;
+	ImGui::SeparatorText("Frame times");
+	ImGui::Text("avg: %6.2fms min: %6.2fms max: %6.2fms", avg, minTime, maxTime);
+	ImGui::PlotLines("##frametimeplot", [](void* data, int idx){ return glimp_frametimes[(glimp_frameIndex+idx) % 256]; }, NULL, 256, 0, "Frametimes in ms over time", 0.0f, 100.0f, ImVec2(0, 120));
+
+	minTime = 100000;
+	maxTime = 0;
+	total = 0;
+	for ( float t : glimp_swaptimes ) {
+		if ( t < minTime )
+			minTime = t;
+		if ( t > maxTime )
+			maxTime = t;
+
+		total += t;
+	}
+	avg = total/256.0f;
+	ImGui::SeparatorText("SDL_GL_SwapWindow() times");
+	ImGui::Text("avg: %6.2fms min: %6.2fms max: %6.2fms", avg, minTime, maxTime);
+	ImGui::PlotLines("##swaptimeplot", [](void* data, int idx){ return glimp_swaptimes[(glimp_frameIndex+idx) % 256]; }, NULL, 256, 0, "Swaptimes in ms over time", 0.0f, 100.0f, ImVec2(0, 120));
+}
+
+
 static bool showStyleEditor = false;
 
 static void DrawOtherOptionsMenu()
@@ -2458,6 +2501,10 @@ static void DrawOtherOptionsMenu()
 	if ( ImGui::Button( "Show ImGui Demo" ) ) {
 		D3::ImGuiHooks::OpenWindow( D3::ImGuiHooks::D3_ImGuiWin_Demo );
 	}
+
+	ImGui::Spacing();
+
+	drawFpsInfo();
 }
 
 } //anon namespace

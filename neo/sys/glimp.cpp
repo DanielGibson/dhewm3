@@ -1052,12 +1052,30 @@ void GLimp_Shutdown() {
 GLimp_SwapBuffers
 ===================
 */
+
+float glimp_frametimes[256];
+float glimp_swaptimes[256];
+unsigned glimp_frameIndex = 0;
+
 void GLimp_SwapBuffers() {
+	static double lastFrameTimestamp = 0.0;
+
+	unsigned idx = glimp_frameIndex % 256;
+	glimp_frameIndex++;
+
+	double now = Sys_MillisecondsPrecise();
+	float frametime = now - lastFrameTimestamp;
+	glimp_frametimes[idx] = frametime;
+	lastFrameTimestamp = now;
+
+
 #if SDL_VERSION_ATLEAST(2, 0, 0)
 	SDL_GL_SwapWindow(window);
 #else
 	SDL_GL_SwapBuffers();
 #endif
+	double after = Sys_MillisecondsPrecise();
+	glimp_swaptimes[idx] = after - now;
 }
 
 // SDL3 doesn't support hardware gamma
