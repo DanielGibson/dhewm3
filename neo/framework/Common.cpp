@@ -2634,7 +2634,15 @@ void idCommonLocal::Async( void ) {
 		}
 	}
 
-	while ( lastTicMsec + ticMsec <= msec ) {
+	// + 0.1 for a little bit of tolerance - the sleep function used by AsyncThread()
+	// often wakes a few microseconds early and there's no point in sleeping again for < 1ms.
+	// This will *not* cause drifting because we always just add ticMsec to lastTicMsec,
+	// no matter when this function is called.
+	// TODO: but might be better to try to align to vsync if that's not too far off, otherwise
+	//       we'll drift to that if the display runs at 59.95Hz (and this thread at 60Hz)?
+	//       However that would be done, it's happening in another thread.. could maybe save
+	//       the time GLimp_SwapBuffers() returns?
+	while ( lastTicMsec + ticMsec <= msec + 0.9 ) {
 		SingleAsyncTic();
 		lastTicMsec += ticMsec;
 	}
