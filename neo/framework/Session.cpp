@@ -2498,6 +2498,7 @@ idSessionLocal::Draw
 ===============
 */
 void idSessionLocal::Draw() {
+	D3P_ScopedCPUSample(Session_Draw);
 	bool fullConsole = false;
 
 	if ( insideExecuteMapChange ) {
@@ -2598,7 +2599,7 @@ idSessionLocal::UpdateScreen
 ===============
 */
 void idSessionLocal::UpdateScreen( bool outOfSequence ) {
-
+	D3P_ScopedCPUSample(Session_UpdateScreen);
 #ifdef _WIN32
 
 	if ( com_editors ) {
@@ -2621,16 +2622,20 @@ void idSessionLocal::UpdateScreen( bool outOfSequence ) {
 		Sys_GrabMouseCursor( false );
 	}
 
+	D3P_BeginCPUSample(Render_BeginFrame);
 	renderSystem->BeginFrame( renderSystem->GetScreenWidth(), renderSystem->GetScreenHeight() );
+	D3P_EndCPUSample(Render_BeginFrame);
 
 	// draw everything
 	Draw();
 
+	D3P_BeginCPUSample(Render_EndFrame);
 	if ( com_speeds.GetBool() ) {
 		renderSystem->EndFrame( &time_frontend, &time_backend );
 	} else {
 		renderSystem->EndFrame( NULL, NULL );
 	}
+	D3P_EndCPUSample(Render_EndFrame);
 
 	insideUpdateScreen = false;
 }
@@ -2643,6 +2648,8 @@ idSessionLocal::Frame
 extern bool CheckOpenALDeviceAndRecoverIfNeeded();
 extern int g_screenshotFormat;
 void idSessionLocal::Frame() {
+	D3P_ScopedCPUSample(Session_Frame);
+	const int tickNrAtStart = com_ticNumber;
 
 	if ( com_asyncSound.GetInteger() == 0 ) {
 		soundSystem->AsyncUpdateWrite( Sys_Milliseconds() );
@@ -2728,6 +2735,7 @@ void idSessionLocal::Frame() {
 		if ( latchedTicNumber >= minTic ) {
 			break;
 		}
+		D3P_ScopedCPUSample(WaitForTrigger);
 		Sys_WaitForEvent( TRIGGER_EVENT_ONE );
 	}
 
@@ -2856,6 +2864,10 @@ void idSessionLocal::Frame() {
 			break;
 		}
 	}
+	if(gameTicsToRun != 1) {
+		D3P_ScopedCPUSample(GameTicWarning);
+		printf("XXX WTF we're in idSessionLocal::Frame() and have %d gameTicsToRun! minTic: %d com_ticNumber: %d at func start: %d\n", gameTicsToRun, minTic, com_ticNumber, tickNrAtStart);
+	}
 }
 
 /*
@@ -2864,6 +2876,7 @@ idSessionLocal::RunGameTic
 ================
 */
 void idSessionLocal::RunGameTic() {
+	D3P_ScopedCPUSample(Session_RunGameTic);
 	logCmd_t	logCmd;
 	usercmd_t	cmd;
 

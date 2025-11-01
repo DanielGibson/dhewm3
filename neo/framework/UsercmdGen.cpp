@@ -1337,6 +1337,7 @@ Called asyncronously
 ================
 */
 void idUsercmdGenLocal::UsercmdInterrupt( void ) {
+	D3P_CPUSampleFn();
 	// dedicated servers won't create usercmds
 	if ( !initialized ) {
 		return;

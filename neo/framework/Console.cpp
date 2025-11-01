@@ -193,8 +193,9 @@ void SCR_DrawTextRightAlign( float &y, const char *text, ... ) {
 SCR_DrawFPS
 ==================
 */
-#define	FPS_FRAMES	30
+#define	FPS_FRAMES	64
 float SCR_DrawFPS( float y ) {
+	D3P_CPUSampleFnBacktrace();
 	static float previousTimes[FPS_FRAMES];
 	static int	index;
 	static double previous;
@@ -218,13 +219,23 @@ float SCR_DrawFPS( float y ) {
 			minTime = Min( minTime, pt );
 			maxTime = Max( maxTime, pt );
 		}
-		if ( !total ) {
-			total = 1;
+#if 0
+		// average FPS over the last frames only so it's more recent and not too averaged to be useful
+		float fpsTotal = 0.0f;
+		for ( unsigned j = 1; j <= 8 ; ++j ) {
+			unsigned i = ((unsigned)index - j) % FPS_FRAMES;
+			fpsTotal += previousTimes[i];
 		}
+		if ( !fpsTotal ) {
+			fpsTotal = 1;
+		}
+		float fps = (1000.0f * 8) / fpsTotal;
+#else
 		float fps = (1000.0f * FPS_FRAMES) / total;
-		int ifps = idMath::Rint( fps );
+#endif
+		//int ifps = idMath::Rint( fps );
 
-		char* s = va( "%dfps", ifps );
+		char* s = va( "%.2ffps", fps );
 		int w = strlen( s ) * BIGCHAR_WIDTH;
 
 		renderSystem->DrawBigStringExt( 635 - w, idMath::FtoiFast( y ) + 2, s, colorWhite, true, localConsole.charSetShader);

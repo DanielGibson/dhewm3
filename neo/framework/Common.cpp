@@ -2450,6 +2450,7 @@ idCommonLocal::Frame
 =================
 */
 void idCommonLocal::Frame( void ) {
+	D3P_ScopedCPUSample(Common_Frame);
 	try {
 
 		// pump all the events
@@ -2508,7 +2509,7 @@ void idCommonLocal::Frame( void ) {
 		// set idLib frame number for frame based memory dumps
 		idLib::frameNumber = com_frameNumber;
 
-		D3P_FRAMEMARK // tell profiler (tracy) that this is the end of a frame
+		//D3P_FRAMEMARK // tell profiler (tracy) that this is the end of a frame - this is in glimp.cpp now
 	}
 
 	catch( idException & ) {
@@ -2565,6 +2566,7 @@ static double lastTicMsec = 0.0;
 static double nextTicTargetMsec = 0.0; // when (according to Sys_Milliseconds()) the next async tic should start
 
 void idCommonLocal::SingleAsyncTic( void ) {
+	D3P_ScopedCPUSample(AsyncTic);
 	// main thread code can prevent this from happening while modifying
 	// critical data structures
 	Sys_EnterCriticalSection();
@@ -2864,7 +2866,7 @@ int idCommonLocal::AsyncThread(void* arg)
 	idCommonLocal* self = (idCommonLocal*)arg;
 
 	while ( self->runAsyncThread ) {
-
+		D3P_ScopedCPUSample(AsyncThreadFrame);
 		// The idea is to make this run super-exact, but round *down* com_gameFrameTime (USERCMD_MSEC).
 		// Then (I think..) when the game thread actually runs (0.x ms later than it might expect)
 		// all the things that waited for USERCMD_MSEC will run because they're (slightly) overdue

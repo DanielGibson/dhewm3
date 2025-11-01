@@ -273,7 +273,7 @@ if(TRACY)
 		FetchContent_Declare(
 			tracy
 			GIT_REPOSITORY https://github.com/wolfpld/tracy.git
-			GIT_TAG v0.9
+			GIT_TAG v0.12.2
 			#GIT_TAG master
 			GIT_SHALLOW TRUE
 			GIT_PROGRESS TRUE
