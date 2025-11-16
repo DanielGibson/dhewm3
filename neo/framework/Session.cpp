@@ -2646,6 +2646,7 @@ idSessionLocal::Frame
 ===============
 */
 extern bool CheckOpenALDeviceAndRecoverIfNeeded();
+extern void Com_WaitForNextTicStart();
 extern int g_screenshotFormat;
 void idSessionLocal::Frame() {
 	D3P_ScopedCPUSample(Session_Frame);
@@ -2735,8 +2736,8 @@ void idSessionLocal::Frame() {
 		if ( latchedTicNumber >= minTic ) {
 			break;
 		}
-		D3P_ScopedCPUSample(WaitForTrigger);
-		Sys_WaitForEvent( TRIGGER_EVENT_ONE );
+		D3P_ScopedCPUSample(WaitForNextFrameTime);
+		Com_WaitForNextTicStart();
 	}
 
 	if ( authEmitTimeout ) {

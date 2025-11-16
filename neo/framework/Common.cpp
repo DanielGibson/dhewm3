@@ -118,7 +118,7 @@ idCVar com_product_lang_ext( "com_product_lang_ext", "1", CVAR_INTEGER | CVAR_SY
 // here (in the old 60fps-only code) they're const and just to reduce difference to the other branch
 const int    com_gameHzVal = 60;
 const int    com_gameFrameLengthMS = 16; // length of one frame in msec, 1000 / com_gameHz
-const float  com_preciseFrameLengthMS = 16.6667f;    // 1000.0f / gameHzVal
+const double  com_preciseFrameLengthMS = 16.6667f;    // 1000.0f / gameHzVal
 
 double com_preciseFrameTimeMS = 0; // like com_frameTime but as double: time (since start) for the current frame in milliseconds
 
@@ -262,6 +262,8 @@ private:
 idCommonLocal	commonLocal;
 idCommon *		common = &commonLocal;
 
+static double nextTicTime = 0.0;
+
 // DG: updates com_frameTime based on the current tic number and USERCMD_MSEC (com_gameFrameTime == 1000/com_gameHz)
 void Com_UpdateFrameTime() {
 	// It used to be just com_frameTime = com_ticNumber * USERCMD_MSEC;
@@ -269,13 +271,31 @@ void Com_UpdateFrameTime() {
 	// that doesn't work anymore (com_frameTime would decrease when setting com_gameHz to a lower value!)
 	// So I moved updating it into a function (it's done in 3 places) that has just slightly more logic
 	// to ensure com_frameTime never decreases (well, until it overflows :-p)
-	static int lastTicNum = 0;
-	int ticNum = com_ticNumber;
-	int ticDiff = ticNum - lastTicNum;
-	assert(ticDiff >= 0);
-	com_preciseFrameTimeMS += ticDiff * com_preciseFrameLengthMS;
-	com_frameTime = idMath::Rint( com_preciseFrameTimeMS );
-	lastTicNum = ticNum;
+	double now = Sys_MillisecondsPrecise();
+	// TODO: somehow sync with vsync to avoid drifting apart
+	double timeDiff = now - nextTicTime + 0.1; // 0.1 ms tolerance in case we're just a little early
+	if ( timeDiff >= 0.0) {
+		if ( nextTicTime == 0.0 ) {
+			nextTicTime = now + com_preciseFrameLengthMS;
+			com_ticNumber = 1;
+		} else {
+			// usually numTics should be 1, except if timeDiff > 16.6667 (skipped a frame?)
+			int numTics = 1 + (timeDiff / com_preciseFrameLengthMS);
+
+			nextTicTime += numTics * com_preciseFrameLengthMS;
+			com_preciseFrameTimeMS = nextTicTime - com_preciseFrameLengthMS;
+			com_frameTime = idMath::Rint( com_preciseFrameTimeMS );
+			com_ticNumber += numTics;
+		}
+	}
+}
+
+// DG: waits until com_ticNumber should be increased and then calls Com_UpdateFrameTime() to make that happen
+void Com_WaitForNextTicStart() {
+	if ( nextTicTime != 0.0 ) {
+		Sys_SleepUntilPrecise( nextTicTime );
+	}
+	Com_UpdateFrameTime();
 }
 
 /*
@@ -2594,7 +2614,7 @@ void idCommonLocal::SingleAsyncTic( void ) {
 
 	// we update com_ticNumber after all the background tasks
 	// have completed their work for this tic
-	com_ticNumber++;
+	// XXX com_ticNumber++;
 
 	stat->timeConsumed = Sys_Milliseconds() - stat->milliseconds;
 
