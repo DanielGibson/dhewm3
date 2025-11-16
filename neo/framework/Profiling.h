@@ -12,6 +12,8 @@
 
 #define D3P_FRAMEMARK FrameMark;
 
+#define D3P_NAMED_FRAMEMARK(NAME) FrameMarkNamed(NAME)
+
 #define D3P_ScopedCPUSample(NAME) \
 	ZoneNamedN(_D3_TRACY_ ## NAME, #NAME, 1)
 
@@ -43,6 +45,7 @@
 // but keep in mind that CMake only fetches the Tracy source (incl. those headers) if it's enabled via our TRACY CMake option
 
 #define D3P_FRAMEMARK
+#define D3P_NAMED_FRAMEMARK(NAME)
 #define D3P_ScopedCPUSample(NAME)
 #define D3P_BeginCPUSample(NAME)
 #define D3P_BeginCPUSampleDynamic(ID, NAMESTR)

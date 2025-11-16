@@ -2650,7 +2650,6 @@ extern void Com_WaitForNextTicStart();
 extern int g_screenshotFormat;
 void idSessionLocal::Frame() {
 	D3P_ScopedCPUSample(Session_Frame);
-	const int tickNrAtStart = com_ticNumber;
 
 	if ( com_asyncSound.GetInteger() == 0 ) {
 		soundSystem->AsyncUpdateWrite( Sys_Milliseconds() );

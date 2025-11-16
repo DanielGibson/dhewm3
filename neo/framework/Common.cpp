@@ -51,6 +51,7 @@ If you have questions concerning this license or the applicable additional terms
 #include "renderer/Model.h"
 #include "renderer/ModelManager.h"
 #include "renderer/RenderSystem.h"
+#include "renderer/tr_local.h" // to get swapinterval and refreshrate
 #include "tools/compilers/compiler_public.h"
 #include "tools/compilers/aas/AASFileManager.h"
 #include "tools/edit_public.h"
@@ -272,7 +273,6 @@ void Com_UpdateFrameTime() {
 	// So I moved updating it into a function (it's done in 3 places) that has just slightly more logic
 	// to ensure com_frameTime never decreases (well, until it overflows :-p)
 	double now = Sys_MillisecondsPrecise();
-	// TODO: somehow sync with vsync to avoid drifting apart
 	double timeDiff = now - nextTicTime + 0.1; // 0.1 ms tolerance in case we're just a little early
 	if ( timeDiff >= 0.0) {
 		if ( nextTicTime == 0.0 ) {
@@ -292,6 +292,7 @@ void Com_UpdateFrameTime() {
 
 // DG: waits until com_ticNumber should be increased and then calls Com_UpdateFrameTime() to make that happen
 void Com_WaitForNextTicStart() {
+	D3P_CPUSampleFn();
 	if ( nextTicTime != 0.0 ) {
 		Sys_SleepUntilPrecise( nextTicTime );
 	}
@@ -2529,7 +2530,18 @@ void idCommonLocal::Frame( void ) {
 		// set idLib frame number for frame based memory dumps
 		idLib::frameNumber = com_frameNumber;
 
-		//D3P_FRAMEMARK // tell profiler (tracy) that this is the end of a frame - this is in glimp.cpp now
+		if ( GLimp_GetSwapInterval() != 0 && fabsf(60.0f - GLimp_GetDisplayRefresh()) < 1.0f ) {
+			// if we're using vsync and the display is running at about 60Hz, start next tic
+			// immediately so our internal tic time and vsync don't drift apart
+			double now = Sys_MillisecondsPrecise();
+			if(nextTicTime > now) {
+				nextTicTime = now;
+			} // else a new tic is started anyway (which often means that this frame was too long)
+		} else {
+			Com_WaitForNextTicStart();
+		}
+
+		D3P_FRAMEMARK // tell profiler (tracy) that this is the end of a frame
 	}
 
 	catch( idException & ) {

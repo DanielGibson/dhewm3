@@ -1124,8 +1124,6 @@ void GLimp_SwapBuffers() {
 	unsigned idx = glimp_frameIndex % 256;
 	glimp_frameIndex++;
 
-	//D3P_FRAMEMARK;
-
 	double before = Sys_MillisecondsPrecise();
 
 	D3P_BeginCPUSample(SDL_GL_SwapWindow);
@@ -1143,7 +1141,7 @@ void GLimp_SwapBuffers() {
 	glimp_frametimes[idx] = frametime;
 	lastFrameTimestamp = after;
 
-	D3P_FRAMEMARK;
+	D3P_NAMED_FRAMEMARK("Render Frame");
 }
 
 // SDL3 doesn't support hardware gamma
