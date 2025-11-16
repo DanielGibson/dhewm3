@@ -225,7 +225,6 @@ private:
 	void						CheckToolMode( void );
 	void						WriteConfiguration( void );
 	void						DumpWarnings( void );
-	void						SingleAsyncTic( void );
 	void						LoadGameDLL( void );
 	void						LoadGameDLLbyName( const char *dll, idStr& s );
 	void						UnloadGameDLL( void );
@@ -2566,118 +2565,34 @@ void idCommonLocal::GUIFrame( bool execCmd, bool network ) {
 
 /*
 =================
-idCommonLocal::SingleAsyncTic
+idCommonLocal::Async
 
-The system will asyncronously call this function 60 times a second to
-handle the time-critical functions that we don't want limited to
-the frame rate:
-
-sound mixing
-user input generation (conditioned by com_asyncInput)
-packet server operation
-packet client operation
-
-We are not using thread safe libraries, so any functionality put here must
-be VERY VERY careful about what it calls.
+Called 60 times per second, updates audio.
 =================
 */
-
-typedef struct {
-	int				milliseconds;			// should always be incremeting by 60hz
-	int				deltaMsec;				// should always be 16
-	int				timeConsumed;			// msec spent in Com_AsyncThread()
-	int				clientPacketsReceived;
-	int				serverPacketsReceived;
-	int				mostRecentServerPacketSequence;
-} asyncStats_t;
-
-static const int MAX_ASYNC_STATS = 1024;
-asyncStats_t	com_asyncStats[MAX_ASYNC_STATS];		// indexed by com_ticNumber
-static double lastTicMsec = 0.0;
-static double nextTicTargetMsec = 0.0; // when (according to Sys_Milliseconds()) the next async tic should start
-
-void idCommonLocal::SingleAsyncTic( void ) {
-	D3P_ScopedCPUSample(AsyncTic);
+void idCommonLocal::Async( void ) {
 	// main thread code can prevent this from happening while modifying
 	// critical data structures
+
 	Sys_EnterCriticalSection();
 
-	asyncStats_t *stat = &com_asyncStats[com_ticNumber & (MAX_ASYNC_STATS-1)];
-	memset( stat, 0, sizeof( *stat ) );
-	stat->milliseconds = Sys_Milliseconds();
-	stat->deltaMsec = stat->milliseconds - com_asyncStats[(com_ticNumber - 1) & (MAX_ASYNC_STATS-1)].milliseconds;
+	int now = Sys_Milliseconds();
 
 	switch ( com_asyncSound.GetInteger() ) {
 		case 1:
 		case 3:
 			// DG: these are now used for the new default behavior of "update every async tic (every 16ms)"
-			soundSystem->AsyncUpdateWrite( stat->milliseconds );
+			soundSystem->AsyncUpdateWrite( now );
 			break;
 		case 2:
 			// DG: use 2 for the old "update only 10x/second" behavior in case anyone likes that..
-			soundSystem->AsyncUpdate( stat->milliseconds );
+			soundSystem->AsyncUpdate( now );
 			break;
 	}
 
-	// we update com_ticNumber after all the background tasks
-	// have completed their work for this tic
-	// XXX com_ticNumber++;
-
-	stat->timeConsumed = Sys_Milliseconds() - stat->milliseconds;
+	// Note: com_ticNumber is now updated in the main thread.
 
 	Sys_LeaveCriticalSection();
-}
-
-/*
-=================
-idCommonLocal::Async
-=================
-*/
-void idCommonLocal::Async( void ) {
-
-	double msec = Sys_MillisecondsPrecise();
-	if ( !lastTicMsec ) {
-		lastTicMsec = msec - com_preciseFrameLengthMS;
-	}
-
-	if ( !com_preciseTic.GetBool() ) {
-		// just run a single tic, even if the exact msec isn't precise
-		SingleAsyncTic();
-		nextTicTargetMsec = msec + com_preciseFrameLengthMS;
-		return;
-	}
-
-	float ticMsec = com_preciseFrameLengthMS;
-
-	// the number of msec per tic can be varies with the timescale cvar
-	float timescale = com_timescale.GetFloat();
-	if ( timescale != 1.0f ) {
-		ticMsec /= timescale;
-		if ( ticMsec < 1 ) {
-			ticMsec = 1;
-		}
-	}
-
-	// don't skip too many
-	if ( timescale == 1.0f ) {
-		if ( lastTicMsec + 10 * com_preciseFrameLengthMS < msec ) {
-			lastTicMsec = msec - 10.0*com_preciseFrameLengthMS;
-		}
-	}
-
-	// + 0.1 for a little bit of tolerance - the sleep function used by AsyncThread()
-	// often wakes a few microseconds early and there's no point in sleeping again for < 1ms.
-	// This will *not* cause drifting because we always just add ticMsec to lastTicMsec,
-	// no matter when this function is called.
-	// TODO: but might be better to try to align to vsync if that's not too far off, otherwise
-	//       we'll drift to that if the display runs at 59.95Hz (and this thread at 60Hz)?
-	//       However that would be done, it's happening in another thread.. could maybe save
-	//       the time GLimp_SwapBuffers() returns?
-	while ( lastTicMsec + ticMsec <= msec + 0.9 ) {
-		SingleAsyncTic();
-		lastTicMsec += ticMsec;
-	}
-	nextTicTargetMsec = lastTicMsec + ticMsec;
 }
 
 /*
@@ -2892,23 +2807,15 @@ int idCommonLocal::AsyncThread(void* arg)
 {
 	idCommonLocal* self = (idCommonLocal*)arg;
 
-	while ( self->runAsyncThread ) {
-		D3P_ScopedCPUSample(AsyncThreadFrame);
-		// The idea is to make this run super-exact, but round *down* com_gameFrameTime (USERCMD_MSEC).
-		// Then (I think..) when the game thread actually runs (0.x ms later than it might expect)
-		// all the things that waited for USERCMD_MSEC will run because they're (slightly) overdue
-		//  => they'll be exactly on time
-		// TODO: .. well, unless maybe if they waited for so many frametimes that we're a frame early..
-		//       But does it even matter for such long waits?
-		//       (and also, so far USERCMD_MSEC *has* been rounded down from 16.6667 to 16,
-		//        and with VSync enabled there was more or less correct timing)
+	double nextTicTargetMsec = Sys_MillisecondsPrecise();
 
+	while ( self->runAsyncThread ) {
 		self->Async();
 
-		// idSessionLocal::Frame() waits for TRIGGER_EVENT_ONE
-		// => this syncs the main thread with the async thread
-		Sys_TriggerEvent(TRIGGER_EVENT_ONE);
-
+		// TODO: Should this be synchronized with the main thread somehow?
+		//       Might make sense to run this when game tics are done, while main thread is rendering?
+		//       For now I'll assume that just doing this 60 times per second works well enough...
+		nextTicTargetMsec += com_preciseFrameLengthMS;
 		Sys_SleepUntilPrecise( nextTicTargetMsec );
 	}
 	return 0;
