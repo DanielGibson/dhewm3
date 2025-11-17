@@ -265,6 +265,7 @@ static double nextTicTime = 0.0;
 
 // DG: updates com_frameTime based on the current tic number and USERCMD_MSEC (com_gameFrameTime == 1000/com_gameHz)
 void Com_UpdateFrameTime() {
+	D3P_CPUSampleFn();
 	// It used to be just com_frameTime = com_ticNumber * USERCMD_MSEC;
 	// But now that USERCMD_MSEC isn't fixed to 16 for fixed 60fps anymore (thanks to com_gameHz),
 	// that doesn't work anymore (com_frameTime would decrease when setting com_gameHz to a lower value!)
@@ -1117,6 +1118,7 @@ Writes key bindings and archived cvars to config file if modified
 ===============
 */
 void idCommonLocal::WriteConfiguration( void ) {
+	D3P_ScopedCPUSample(WriteConfiguration);
 	// if we are quiting without fully initializing, make sure
 	// we don't write out anything
 	if ( !com_fullyInitialized ) {
