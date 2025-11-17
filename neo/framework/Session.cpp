@@ -2864,7 +2864,7 @@ void idSessionLocal::Frame() {
 	}
 	if(gameTicsToRun != 1) {
 		D3P_ScopedCPUSample(GameTicWarning);
-		printf("XXX WTF we're in idSessionLocal::Frame() and have %d gameTicsToRun! minTic: %d com_ticNumber: %d at func start: %d\n", gameTicsToRun, minTic, com_ticNumber, tickNrAtStart);
+		printf("XXX WTF we're in idSessionLocal::Frame() and have %d gameTicsToRun! minTic: %d com_ticNumber: %d\n", gameTicsToRun, minTic, com_ticNumber);
 	}
 }
 
