@@ -272,7 +272,7 @@ void rvOpenFileDialog::HandleCommandOK ( void )
 			file = fileSystem->OpenFileRead ( mFilename );
 			if ( !file )
 			{
-				MessageBox ( mWnd, va("%s\nFile not found.\nPlease verify the correct file name was given", mFilename.c_str() ), "Open", MB_ICONERROR|MB_OK );
+				MessageBoxA ( mWnd, va("%s\nFile not found.\nPlease verify the correct file name was given", mFilename.c_str() ), "Open", MB_ICONERROR|MB_OK );
 				return;
 			}
 			fileSystem->CloseFile ( file );

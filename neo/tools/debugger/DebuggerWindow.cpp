@@ -450,7 +450,7 @@ LRESULT CALLBACK rvDebuggerWindow::MarginWndProc ( HWND wnd, UINT msg, WPARAM wp
 				t.right -= s4; // a little space between text and "border" to code part of window
 				
 				idStr lntxt( iFirstVisibleLine + i + 1);
-				DrawText( dc, lntxt, lntxt.Length(), &t, DT_RIGHT );
+				DrawTextA( dc, lntxt, lntxt.Length(), &t, DT_RIGHT );
 			}
 			DeleteObject( hf );
 
@@ -1156,7 +1156,7 @@ int rvDebuggerWindow::HandleCommand ( WPARAM wparam, LPARAM lparam )
 		filename = gDebuggerApp.GetOptions().GetRecentFile ( gDebuggerApp.GetOptions().GetRecentFileCount() - (LOWORD(wparam)-ID_DBG_FILE_MRU1) - 1 );
 		if ( !OpenScript ( filename ) )
 		{
-			MessageBox ( mWnd, va("Failed to open script '%s'", filename.c_str() ), "Quake 4 Script Debugger", MB_OK );
+			MessageBoxA ( mWnd, va("Failed to open script '%s'", filename.c_str() ), "Quake 4 Script Debugger", MB_OK );
 		}
 		return 0;
 	}
@@ -1346,7 +1346,7 @@ int rvDebuggerWindow::HandleCommand ( WPARAM wparam, LPARAM lparam )
 			{
 				if ( !OpenScript ( dlg.GetFilename ( ) ) )
 				{
-					MessageBox ( mWnd, va("Failed to open script '%s'",dlg.GetFilename ( )), "Quake 4 Script Debugger", MB_OK );
+					MessageBoxA ( mWnd, va("Failed to open script '%s'",dlg.GetFilename ( )), "Quake 4 Script Debugger", MB_OK );
 				}
 			}
 			break;
@@ -1843,7 +1843,7 @@ LRESULT CALLBACK rvDebuggerWindow::WndProc ( HWND wnd, UINT msg, WPARAM wparam, 
 		case WM_CLOSE:
 			if ( window->mClient->IsConnected ( ) )
 			{
-				if ( IDNO == MessageBox ( wnd, "The debugger is currently connected to a running version of the game.  Are you sure you want to close now?", "Dhewm3 Script Debugger", MB_YESNO|MB_ICONQUESTION ) )
+				if ( IDNO == MessageBoxA ( wnd, "The debugger is currently connected to a running version of the game.  Are you sure you want to close now?", "Dhewm3 Script Debugger", MB_YESNO|MB_ICONQUESTION ) )
 				{
 					return 0;
 				}
@@ -2354,7 +2354,7 @@ int rvDebuggerWindow::HandleActivate ( WPARAM wparam, LPARAM lparam )
 	{
 		if ( mScripts[i]->IsFileModified ( true ) )
 		{
-			if ( IDYES == MessageBox ( mWnd, va("%s\n\nThis file has been modified outside of the debugger.\nDo you want to reload it?", mScripts[i]->GetFilename() ), "Quake 4 Script Debugger", MB_YESNO|MB_ICONQUESTION ) )
+			if ( IDYES == MessageBoxA ( mWnd, va("%s\n\nThis file has been modified outside of the debugger.\nDo you want to reload it?", mScripts[i]->GetFilename() ), "Quake 4 Script Debugger", MB_YESNO|MB_ICONQUESTION ) )
 			{
 				mScripts[i]->Reload ( );
 
@@ -2721,7 +2721,7 @@ int rvDebuggerWindow::HandleDrawItem ( WPARAM wparam, LPARAM lparam )
 			{
 				case 0:
 					SetTextColor ( dis->hDC, GetSysColor ( selected ? COLOR_HIGHLIGHTTEXT : COLOR_WINDOWTEXT ) );
-					DrawText ( dis->hDC, watch->mVariable, -1, &textrect, DT_LEFT|DT_VCENTER );
+					DrawTextA ( dis->hDC, watch->mVariable, -1, &textrect, DT_LEFT|DT_VCENTER );
 					break;
 
 				case 1:
@@ -2733,7 +2733,7 @@ int rvDebuggerWindow::HandleDrawItem ( WPARAM wparam, LPARAM lparam )
 					{
 						SetTextColor ( dis->hDC, GetSysColor ( selected ? COLOR_HIGHLIGHTTEXT : COLOR_WINDOWTEXT ) );
 					}
-					DrawText ( dis->hDC, watch->mValue, -1, &textrect, DT_LEFT|DT_VCENTER );
+					DrawTextA ( dis->hDC, watch->mValue, -1, &textrect, DT_LEFT|DT_VCENTER );
 					break;
 			}
 		}

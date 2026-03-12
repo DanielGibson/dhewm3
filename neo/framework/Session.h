@@ -29,6 +29,10 @@ If you have questions concerning this license or the applicable additional terms
 #ifndef __SESSION_H__
 #define __SESSION_H__
 
+#ifdef MessageBox // fucking Windows.h, I swear..
+  #undef MessageBox
+#endif
+
 struct sysEvent_t;
 struct backgroundDownload_t;
 class idDemoFile;

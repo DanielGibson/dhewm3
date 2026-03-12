@@ -3987,6 +3987,9 @@ void TestNegate( void ) {
 	PrintClocks( va( "   simd->Negate16( float[] ) %s", result ), COUNT, bestClocksSIMD, bestClocksGeneric );
 }
 
+#ifdef _WIN32
+#include "sys/win32/sys_windows.h"
+#endif
 
 /*
 ============

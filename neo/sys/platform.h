@@ -247,7 +247,7 @@ If you have questions concerning this license or the applicable additional terms
 #include <errno.h>
 #include <math.h>
 
-#ifdef _WIN32
+#if 0 //def _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #undef FindText								// stupid namespace poluting Microsoft monkeys

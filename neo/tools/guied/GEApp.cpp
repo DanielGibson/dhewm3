@@ -1379,5 +1379,5 @@ Displays a modal message box
 */
 int rvGEApp::MessageBox ( const char* text, int flags )
 {
-	return ::MessageBox ( mMDIFrame, text, "Quake 4 GUI Editor", flags );
+	return ::MessageBoxA ( mMDIFrame, text, "Quake 4 GUI Editor", flags );
 }

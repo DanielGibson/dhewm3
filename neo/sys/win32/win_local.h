@@ -34,7 +34,8 @@ If you have questions concerning this license or the applicable additional terms
 #include "tools/comafx/StdAfx.h"
 #endif
 
-#define WIN32_LEAN_AND_MEAN
+#include "sys_windows.h"
+
 #include <winsock2.h>
 #include <mmsystem.h>
 #include <mmreg.h>

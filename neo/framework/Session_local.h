@@ -39,6 +39,10 @@ If you have questions concerning this license or the applicable additional terms
 #include "renderer/RenderWorld.h"
 #include "ui/ListGUI.h"
 
+#ifdef MessageBox // Windows.h, the gift that keeps on giving
+  #undef MessageBox
+#endif
+
 /*
 
 IsConnectedToServer();

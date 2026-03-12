@@ -1220,7 +1220,7 @@ static void redirect_output(void)
 				char msg[2048];
 				D3_snprintfC99( msg, sizeof(msg), "Failed to create '%s',\n error number is %d (%s).\nPermission problem?",
 				                myGamesPath, errno, strerror(errno) );
-				MessageBox( NULL, msg, "Can't create 'My Games' directory!", MB_OK | MB_ICONERROR );
+				MessageBoxA( NULL, msg, "Can't create 'My Games' directory!", MB_OK | MB_ICONERROR );
 				exit(1);
 			}
 		}
@@ -1229,7 +1229,7 @@ static void redirect_output(void)
 			char msg[2048];
 			D3_snprintfC99( msg, sizeof(msg), "Failed to create '%s'\n(for savegames, configs and logs),\n error number is %d (%s)\nIs Documents/My Games/ write protected?",
 			                path, errno, strerror(errno) );
-			MessageBox( NULL, msg, "Can't create 'My Games/dhewm3' directory!", MB_OK | MB_ICONERROR );
+			MessageBoxA( NULL, msg, "Can't create 'My Games/dhewm3' directory!", MB_OK | MB_ICONERROR );
 			exit(1);
 		}
 	}
@@ -1269,7 +1269,7 @@ static void redirect_output(void)
 			char msg[2048];
 			D3_snprintfC99( msg, sizeof(msg), "Failed to create '%s',\n error number is %d (%s)\nIs Documents/My Games/dhewm3/\n or dhewm3log.txt write protected?",
 			                stdoutPath, errno, strerror(errno) );
-			MessageBox( NULL, msg, "Can't create dhewm3log.txt!", MB_OK | MB_ICONERROR );
+			MessageBoxA( NULL, msg, "Can't create dhewm3log.txt!", MB_OK | MB_ICONERROR );
 			exit(1);
 		}
 #endif
@@ -1290,7 +1290,7 @@ static void redirect_output(void)
 			char msg[2048];
 			D3_snprintfC99( msg, sizeof(msg), "Failed to create '%s',\n error number is %d (%s)\nIs Documents/My Games/dhewm3/ write protected?",
 			                stderrPath, errno, strerror(errno) );
-			MessageBox( NULL, msg, "Can't create stderr.txt!", MB_OK | MB_ICONERROR );
+			MessageBoxA( NULL, msg, "Can't create stderr.txt!", MB_OK | MB_ICONERROR );
 			exit(1);
 		}
 #endif

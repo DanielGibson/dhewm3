@@ -7,9 +7,13 @@
 #error "This header should only be included in the Win-only Visual-Studio-only MFC tools code"
 #endif
 
+#include "sys/win32/sys_windows.h"
+
 // (hopefully) suppress "warning C4996: 'MBCS_Support_Deprecated_In_MFC':
 //   MBCS support in MFC is deprecated and may be removed in a future version of MFC."
 #define NO_WARN_MBCS_MFC_DEPRECATION
+
+#define DrawText DrawTextA // not having this define confuses afx headers :-/
 
 #include <afxwin.h>
 
@@ -17,6 +21,8 @@
 #define _ATL_CSTRING_EXPLICIT_CONSTRUCTORS	// prevent auto literal to string conversion
 #include "tools/comafx/StdAfx.h"
 #endif
+
+#undef FindText // apparently that Afx stuff also defines this to FindTextA - that breaks idStr::FindText()
 
 #include "edit_public.h"
 

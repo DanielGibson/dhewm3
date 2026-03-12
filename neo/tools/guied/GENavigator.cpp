@@ -247,7 +247,7 @@ LRESULT CALLBACK rvGENavigator::WndProc ( HWND hWnd, UINT msg, WPARAM wParam, LP
 
 				int colorIndex = ( (dis->itemState & ODS_SELECTED ) ? COLOR_HIGHLIGHTTEXT : COLOR_WINDOWTEXT );
 				SetTextColor ( dis->hDC, GetSysColor ( colorIndex ) );
-				DrawText ( dis->hDC, name, name.Length(), &rDraw, DT_LEFT|DT_VCENTER|DT_SINGLELINE );
+				DrawTextA ( dis->hDC, name, name.Length(), &rDraw, DT_LEFT|DT_VCENTER|DT_SINGLELINE );
 
 				if ( wrapper->GetVariableDict().GetNumKeyVals ( ) || wrapper->GetScriptDict().GetNumKeyVals ( ) )
 				{

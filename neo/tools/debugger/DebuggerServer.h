@@ -42,6 +42,13 @@ If you have questions concerning this license or the applicable additional terms
   #define SDL_cond SDL_Condition
 #endif
 
+#ifdef SendPacket
+  #undef SendPacket
+#endif
+#ifdef SendMessage
+  #undef SendMessage
+#endif
+
 class function_t;
 typedef struct prstack_s prstack_t;
 

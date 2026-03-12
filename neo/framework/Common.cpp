@@ -63,6 +63,11 @@ If you have questions concerning this license or the applicable additional terms
 #include "GameCallbacks_local.h"
 #include "Session_local.h" // DG: For FT_IsDemo/isDemo() hack
 
+#ifdef _WIN32
+#include "../sys/win32/win_local.h" // for Conbuf_AppendText() in checkForHelp()
+#endif // _WIN32
+
+
 #define	MAX_PRINT_MSG_SIZE	4096
 #define MAX_WARNING_LIST	256
 
@@ -137,7 +142,7 @@ bool			com_editorActive;		//  true if an editor has focus
 bool			com_debuggerSupported;	// only set to true when the updateDebugger function is set. see GetAdditionalFunction()
 
 #ifdef _WIN32
-HWND			com_hwndMsg = NULL;
+void*			com_hwndMsg = NULL; // HWND really
 bool			com_outputMsg = false;
 unsigned int	com_msgID = -1;
 #endif
@@ -508,7 +513,7 @@ void idCommonLocal::VPrintf( const char *fmt, va_list args ) {
 		}
 		if ( com_hwndMsg ) {
 			ATOM atom = ::GlobalAddAtom( msg );
-			::PostMessage( com_hwndMsg, com_msgID, 0, static_cast<LPARAM>(atom) );
+			::PostMessage( (HWND)com_hwndMsg, com_msgID, 0, static_cast<LPARAM>(atom) );
 		}
 	}
 
@@ -2880,10 +2885,6 @@ int idCommonLocal::AsyncThread(void* arg)
 	}
 	return 0;
 }
-
-#ifdef _WIN32
-#include "../sys/win32/win_local.h" // for Conbuf_AppendText()
-#endif // _WIN32
 
 static bool checkForHelp(int argc, char **argv)
 {

@@ -1233,7 +1233,9 @@ elseif(WIN32)
 		sys/platform.h
 		sys/sys_local.h
 		sys/sys_public.h
+		sys/sys_sdl.h
 		sys/win32/win_local.h
+		sys/win32/sys_windows.h
 	)
 
 	set(src_sys_core

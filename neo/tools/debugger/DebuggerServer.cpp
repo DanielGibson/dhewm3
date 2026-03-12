@@ -41,6 +41,10 @@ If you have questions concerning this license or the applicable additional terms
 const int MAX_MSGLEN = 8600;
 #endif
 
+#ifdef SendMessage
+  #undef SendMessage
+#endif
+
 #if SDL_VERSION_ATLEAST(3, 0, 0)
   // compat with SDL2
   #define SDL_CreateCond SDL_CreateCondition

@@ -30,7 +30,9 @@ If you have questions concerning this license or the applicable additional terms
 #define __MAYA_MAIN_H__
 
 #include "framework/FileSystem.h"
-
+#ifdef _WIN32
+#include "sys/win32/sys_windows.h"
+#endif
 class idCommon;
 class idSys;
 

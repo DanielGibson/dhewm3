@@ -36,10 +36,18 @@ If you have questions concerning this license or the applicable additional terms
 // to allow stubbing gl on windows, define WINGDIAPI to nothing - it would otherwise be
 // extended to __declspec(dllimport) on MSVC (our stub is no dll.)
 	#ifdef WINGDIAPI
+		#define HAD_WINGDIAPI
 		#pragma push_macro("WINGDIAPI")
 		#undef WINGDIAPI
 		#define WINGDIAPI
 	#endif
+#endif
+
+
+#ifdef _WIN32
+  // include this first so windows.h is included - SDL_opengl.h includes it anyway,
+  // but sys_windows.h #undefs #defines that conflict with Doom3 method names
+  #include "sys/win32/sys_windows.h"
 #endif
 
 #ifdef D3_SDL3
@@ -50,7 +58,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #if defined( ID_DEDICATED ) && defined( _WIN32 )
 // restore WINGDIAPI
-	#ifdef WINGDIAPI
+	#ifdef HAD_WINGDIAPI
 		#pragma pop_macro("WINGDIAPI")
 	#endif
 #endif
