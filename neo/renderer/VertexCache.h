@@ -27,7 +27,7 @@ If you have questions concerning this license or the applicable additional terms
 */
 
 #include "framework/CVarSystem.h"
-#include "renderer/qgl.h"
+//#include "renderer/qgl.h" - DG: avoid leaking windows.h all through the project (qgl.h includes it via SDL_opengl.h)
 
 // vertex cache calls should only be made by the front end
 
@@ -41,7 +41,7 @@ typedef enum {
 } vertBlockTag_t;
 
 typedef struct vertCache_s {
-	GLuint			vbo;
+	unsigned int 	vbo; // GLuint
 	void			*virtMem;			// only one of vbo / virtMem will be set
 	bool			indexBuffer;		// holds indexes instead of vertexes
 

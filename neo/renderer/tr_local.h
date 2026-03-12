@@ -38,6 +38,7 @@ class idScreenRect; // yay for include recursion
 #include "renderer/ModelOverlay.h"
 #include "renderer/RenderSystem.h"
 #include "renderer/RenderWorld.h"
+#include "renderer/qgl.h"
 
 class idRenderWorldLocal;
 

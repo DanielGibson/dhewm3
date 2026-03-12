@@ -32,6 +32,8 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "renderer/Image.h"
 
+#include "renderer/qgl.h"
+
 /*
 PROBLEM: compressed textures may break the zero clamp rule!
 */
@@ -206,9 +208,12 @@ static byte	mipBlendColors[16][4] = {
 SelectInternalFormat
 
 This may need to scan six cube map images
+
+returns GLenum, using unsigned int instead so qgl.h -> SDL_OpenGL.h -> Windows.h
+isn't included in every place Image.h is included
 ===============
 */
-GLenum idImage::SelectInternalFormat( const byte **dataPtrs, int numDataPtrs, int width, int height,
+unsigned int idImage::SelectInternalFormat( const byte **dataPtrs, int numDataPtrs, int width, int height,
 									 textureDepth_t minimumDepth ) const {
 	int		i, c;
 	const byte	*scan;
